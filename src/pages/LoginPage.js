@@ -73,7 +73,13 @@ function ScreenLogin({ onForgot }) {
     try {
       await login(email, pass);
     } catch (ex) {
-      setErr(ex.message);
+      // ถ้า error เรื่องยังไม่ยืนยันอีเมล → แสดงหน้า OTP
+      if (ex.message.includes('ยังไม่ได้รับการยืนยัน')) {
+        setVerifyEmail(email);
+        setScreen('verify');
+      } else {
+        setErr(ex.message);
+      }
     } finally {
       setBusy(false);
     }
