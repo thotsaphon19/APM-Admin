@@ -115,26 +115,25 @@ function ScreenVerify({ email, prefillOtp = '', onDone }) {
   const [err,  setErr]  = useState('');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
-  const [autoVerified, setAutoVerified] = useState(false);
 
-  // ถ้ามี OTP จาก URL → verify อัตโนมัติเลย
+  // แค่ prefill OTP จาก URL ไว้ในช่อง ไม่ auto-verify
   useEffect(() => {
-    if (prefillOtp && prefillOtp.length === 6 && !autoVerified) {
-      setAutoVerified(true);
-      verify(prefillOtp);
-    }
-  }, []);
+    if (prefillOtp) setOtp(prefillOtp);
+  }, [prefillOtp]);
 
   async function resend() {
-    setBusy(true); setErr('');
-    try { await api.sendVerifyEmail({ email, type: 'verify' }); setSent(true); }
-    catch(ex){ setErr(ex.message); }
+    setBusy(true); setErr(''); setSent(false);
+    try {
+      await api.sendVerifyEmail({ email, type: 'verify' });
+      setSent(true);
+      setOtp(''); // ล้าง OTP เก่าออก
+    } catch(ex){ setErr(ex.message); }
     finally{ setBusy(false); }
   }
 
-  async function verify(otpVal) {
-    const code = otpVal || otp;
-    if (code.length < 6) return setErr('กรอก OTP 6 หลัก');
+  async function verify() {
+    const code = otp.trim();
+    if (code.length < 6) return setErr('กรอก OTP 6 หลักให้ครบ');
     setBusy(true); setErr('');
     try {
       await api.verifyEmailOTP({ email, otp: code, type: 'verify' });
@@ -149,18 +148,17 @@ function ScreenVerify({ email, prefillOtp = '', onDone }) {
       <h2 className="lp-title">ยืนยันอีเมล</h2>
       <p className="lp-sub">
         {prefillOtp
-          ? <>กำลังยืนยัน OTP จากลิงก์อีเมล...<br/><strong>{email}</strong></>
+          ? <>OTP ถูกกรอกมาจากลิงก์อีเมล<br/>กด <strong>ยืนยัน OTP</strong> ได้เลย</>
           : <>ระบบส่ง OTP 6 หลักไปที่<br/><strong>{email}</strong></>
         }
       </p>
 
       <OTPInput value={otp} onChange={setOtp}/>
 
-      {busy && <div className="lp-success">⏳ กำลังยืนยัน...</div>}
       {err  && <div className="lp-error">{err}</div>}
       {sent && <div className="lp-success">✅ ส่ง OTP ใหม่แล้ว ตรวจสอบอีเมล</div>}
 
-      <button className="lp-btn" onClick={() => verify()} disabled={busy || otp.length < 6}>
+      <button className="lp-btn" onClick={verify} disabled={busy || otp.length < 6}>
         {busy ? <span className="lp-spinner"/> : '✅'}&nbsp;ยืนยัน OTP
       </button>
       <button type="button" className="lp-link" onClick={resend} disabled={busy}>
