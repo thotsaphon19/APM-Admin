@@ -1,13 +1,11 @@
 // src/pages/PagesPage.js
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import { useAuth } from '../contexts/AuthContext';
 import { ToastContainer, useToast } from '../components/Toast';
 
 const CATEGORIES = ['General', 'ธุรกิจ', 'ความบันเทิง', 'ข่าวสาร', 'สุขภาพ', 'การศึกษา', 'อื่นๆ'];
 
 export default function PagesPage() {
-  const { canDeleteUsers } = useAuth();
   const { toasts, remove, toast } = useToast();
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,9 +142,7 @@ export default function PagesPage() {
                 <button className="btn btn-secondary btn-sm" onClick={() => toggleActive(p)}>
                   {p.active === false || p.active === 'false' ? '✅ เปิดใช้' : '🚫 ปิดใช้'}
                 </button>
-                {canDeleteUsers && (
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>🗑️</button>
-                )}
+                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>🗑️</button>
               </div>
             </div>
           ))}
