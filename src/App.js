@@ -13,6 +13,7 @@ import PersonalPage from './pages/PersonalPage';
 import ProfilePage  from './pages/ProfilePage';
 import LeavePage    from './pages/LeavePage';
 import TeamOverviewPage from './pages/TeamOverviewPage';
+import SettingsPage    from './pages/SettingsPage';
 import './App.css';
 
 function AppContent() {
@@ -39,6 +40,7 @@ function AppContent() {
     profile:      <ProfilePage/>,
     leave:        <LeavePage/>,
     teamoverview: <TeamOverviewPage/>,
+    settings:     <SettingsPage/>,
   };
 
   return (
