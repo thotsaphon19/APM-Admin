@@ -14,14 +14,10 @@ const STATUS_INFO = {
 function calcDays(start, end) {
   if (!start || !end) return 0;
   const s = new Date(start), e = new Date(end);
-  let days = 0;
-  const cur = new Date(s);
-  while (cur <= e) {
-    const d = cur.getDay();
-    if (d !== 0 && d !== 6) days++;
-    cur.setDate(cur.getDate() + 1);
-  }
-  return days;
+  if (e < s) return 0;
+  // นับทุกวัน รวมวันหยุดสุดสัปดาห์
+  const diff = Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
+  return diff;
 }
 
 export default function LeavePage() {
@@ -287,18 +283,18 @@ export default function LeavePage() {
               </div>
 
               {/* Days preview */}
-              {form.startDate && form.endDate && (
+              {form.startDate && form.endDate && days > 0 && (
                 <div style={{
-                  background: days > 0 ? 'rgba(54,215,183,0.08)' : 'rgba(247,111,142,0.08)',
-                  border: `1px solid ${days > 0 ? 'rgba(54,215,183,0.25)' : 'rgba(247,111,142,0.25)'}`,
+                  background: 'rgba(99,102,241,0.06)',
+                  border: '1px solid rgba(99,102,241,0.2)',
                   borderRadius: 8, padding: '10px 16px',
                   fontSize: 13, display: 'flex', alignItems: 'center', gap: 8
                 }}>
-                  <span style={{ fontSize: 18 }}>{days > 0 ? '📅' : '⚠️'}</span>
-                  {days > 0
-                    ? <><strong style={{ color: 'var(--accent-teal)' }}>{days} วันทำการ</strong> (ไม่นับวันหยุดสุดสัปดาห์)</>
-                    : <span style={{ color: 'var(--accent-rose)' }}>วันที่เลือกเป็นวันหยุด</span>
-                  }
+                  <span style={{ fontSize: 18 }}>📅</span>
+                  <strong style={{ color: 'var(--brand-primary)' }}>{days} วัน</strong>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    ({form.startDate} ถึง {form.endDate})
+                  </span>
                 </div>
               )}
 
@@ -319,7 +315,7 @@ export default function LeavePage() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowModal(false)}>ยกเลิก</button>
-              <button className="btn btn-primary" onClick={submitLeave} disabled={days === 0}>
+              <button className="btn btn-primary" onClick={submitLeave}>
                 📨 ยื่นคำขอลา
               </button>
             </div>
