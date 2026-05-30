@@ -22,20 +22,22 @@ export default function Layout({ children, currentPage, setCurrentPage }) {
     { id:'leave',     icon:'🌴', label:'ระบบลางาน',        section:'หลัก',     show: true },
     { id:'personal',  icon:'👤', label:'สรุปรายบุคคล',    section:'หลัก',     show: true },
     { id:'users',     icon:'👥', label:'จัดการผู้ใช้',     section:'จัดการ',   show: !isAdmin },
-    { id:'pages',     icon:'📄', label:'จัดการเพจ',        section:'จัดการ',   show: !isAdmin },
+    { id:'pages',     icon:'📄', label:'จัดการเพจ',        section:'จัดการ',   show: true },
+    { id:'teamoverview', icon:'🗂️', label:'ภาพรวมทีม',    section:'จัดการ',   show: !isAdmin },
     { id:'reports',   icon:'📈', label:'รายงาน & PDF',     section:'รายงาน',   show: true },
     { id:'profile',   icon:'⚙️', label:'โปรไฟล์ของฉัน',  section:'บัญชี',    show: true },
   ];
 
   const titles = {
-    dashboard:{ title:'ภาพรวม',           sub:'สถิติและข้อมูลรวม' },
-    daily:    { title:'รายการประจำวัน',   sub:'บันทึกผลงานรายวัน' },
-    leave:    { title:'ระบบลางาน',        sub:'ยื่นและติดตามคำขอลางาน' },
-    personal: { title:'สรุปรายบุคคล',    sub:'ผลงานแยกตามบุคคล' },
-    users:    { title:'จัดการผู้ใช้',     sub:'เพิ่ม ลบ แก้ไขผู้ใช้' },
-    pages:    { title:'จัดการเพจ',        sub:'เพิ่ม ลบ แก้ไขเพจ' },
-    reports:  { title:'รายงาน',           sub:'สรุปผลรายวัน เดือน ปี + PDF' },
-    profile:  { title:'โปรไฟล์ของฉัน',  sub:'ข้อมูลส่วนตัวและการตั้งค่า' },
+    dashboard:    { title:'ภาพรวม',           sub:'สถิติและข้อมูลรวม' },
+    daily:        { title:'รายการประจำวัน',   sub:'บันทึกผลงานรายวัน' },
+    leave:        { title:'ระบบลางาน',        sub:'ยื่นและติดตามคำขอลางาน' },
+    personal:     { title:'สรุปรายบุคคล',    sub:'ผลงานแยกตามบุคคล' },
+    users:        { title:'จัดการผู้ใช้',     sub:'เพิ่ม ลบ แก้ไขผู้ใช้' },
+    pages:        { title:'จัดการเพจ',        sub:'เพิ่ม ลบ แก้ไขเพจ' },
+    teamoverview: { title:'ภาพรวมทีม',        sub:'เพจที่แอดมินทุกคนรับผิดชอบ' },
+    reports:      { title:'รายงาน',           sub:'สรุปผลรายวัน เดือน ปี + PDF' },
+    profile:      { title:'โปรไฟล์ของฉัน',  sub:'ข้อมูลส่วนตัวและการตั้งค่า' },
   };
 
   const initials = (user?.displayName || user?.email || '?').charAt(0).toUpperCase();
