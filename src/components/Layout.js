@@ -9,8 +9,9 @@ const ROLE_CLASSES = { executive:'role-executive', head:'role-head', admin:'role
 
 export default function Layout({ children, currentPage, setCurrentPage }) {
   const { user, logout, isAdmin } = useAuth();
-  const [collapsed,   setCollapsed]   = useState(false);
-  const [showPWModal, setShowPWModal] = useState(false);
+  const [collapsed,    setCollapsed]    = useState(false);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const [showPWModal,  setShowPWModal]  = useState(false);
   const [pwForm,      setPwForm]      = useState({ current:'', next:'', next2:'' });
   const [pwErr,       setPwErr]       = useState('');
   const [pwOk,        setPwOk]        = useState('');
@@ -25,7 +26,8 @@ export default function Layout({ children, currentPage, setCurrentPage }) {
     { id:'pages',     icon:'📄', label:'จัดการเพจ',        section:'จัดการ',   show: true },
     { id:'teamoverview', icon:'🗂️', label:'ภาพรวมทีม',    section:'จัดการ',   show: !isAdmin },
     { id:'reports',   icon:'📈', label:'รายงาน & PDF',     section:'รายงาน',   show: true },
-    { id:'profile',   icon:'⚙️', label:'โปรไฟล์ของฉัน',  section:'บัญชี',    show: true },
+    { id:'profile',      icon:'⚙️', label:'โปรไฟล์ของฉัน',  section:'บัญชี',    show: true },
+    { id:'settings',     icon:'🛠️', label:'ตั้งค่าระบบ',     section:'บัญชี',    show: !isAdmin },
   ];
 
   const titles = {
@@ -38,6 +40,7 @@ export default function Layout({ children, currentPage, setCurrentPage }) {
     teamoverview: { title:'ภาพรวมทีม',        sub:'เพจที่แอดมินทุกคนรับผิดชอบ' },
     reports:      { title:'รายงาน',           sub:'สรุปผลรายวัน เดือน ปี + PDF' },
     profile:      { title:'โปรไฟล์ของฉัน',  sub:'ข้อมูลส่วนตัวและการตั้งค่า' },
+    settings:     { title:'ตั้งค่าระบบ',     sub:'การเชื่อมต่อและการตั้งค่า' },
   };
 
   const initials = (user?.displayName || user?.email || '?').charAt(0).toUpperCase();
@@ -62,8 +65,14 @@ export default function Layout({ children, currentPage, setCurrentPage }) {
 
   return (
     <div className="layout">
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="sidebar-overlay" onClick={() => setMobileOpen(false)}/>
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className="sidebar" style={{ width: collapsed ? 70 : 240 }}>
+      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}
+        style={{ width: collapsed ? 70 : 240 }}>
         {/* Logo */}
         <div className="sidebar-logo">
           <div className="logo-mark" style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
@@ -87,7 +96,7 @@ export default function Layout({ children, currentPage, setCurrentPage }) {
               {items.map(item => (
                 <div key={item.id}
                   className={`nav-item ${currentPage === item.id ? 'active' : ''}`}
-                  onClick={() => setCurrentPage(item.id)}
+                  onClick={() => { setCurrentPage(item.id); setMobileOpen(false); }}
                   title={collapsed ? item.label : ''}
                 >
                   <span className="nav-icon">{item.icon}</span>
@@ -144,6 +153,10 @@ export default function Layout({ children, currentPage, setCurrentPage }) {
       {/* ── Main ── */}
       <div className="main-content" style={{ marginLeft: collapsed ? 70 : 240 }}>
         <header className="top-bar">
+          {/* Mobile hamburger */}
+          <button className="mobile-menu-btn" onClick={() => setMobileOpen(o => !o)}>
+            {mobileOpen ? '✕' : '☰'}
+          </button>
           <div>
             <div className="page-title">{titles[currentPage]?.title}</div>
             <div className="page-subtitle">{titles[currentPage]?.sub}</div>
