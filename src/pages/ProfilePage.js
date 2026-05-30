@@ -15,10 +15,11 @@ const ROLE_OPTS   = [
 const DAY_OPTS = ['จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์','เสาร์','อาทิตย์'];
 
 // ─────────────────────────────────────────────────────────────
-// MyPagesTab — แอดมินจัดการเพจของตัวเองได้ทั้งหมด
-// บันทึกลง Sheet โดยตรง (ไม่ต้องอิงเพจในระบบก่อน)
+// MyPagesTab — จัดการเพจ
+// canEdit = true  → เพิ่ม/แก้ไข/ลบได้ (ตัวเองหรือ manager)
+// viewerName = ชื่อผู้ดู (สำหรับ manager ดูของคนอื่น)
 // ─────────────────────────────────────────────────────────────
-function MyPagesTab({ user, toast }) {
+function MyPagesTab({ user, toast, canEdit = true, viewerName = '' }) {
   const [entries,    setEntries]    = useState([]); // รายการเพจของฉัน
   const [loading,    setLoading]    = useState(true);
   const [showForm,   setShowForm]   = useState(false);
@@ -123,15 +124,15 @@ function MyPagesTab({ user, toast }) {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
         <div>
           <div style={{ fontWeight:700, fontSize:15, color:'var(--text-primary)' }}>
-            📄 เพจที่ฉันรับผิดชอบ
+            📄 {viewerName ? `เพจที่ ${viewerName} รับผิดชอบ` : 'เพจที่ฉันรับผิดชอบ'}
           </div>
           <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>
-            เพิ่ม แก้ไข หรือลบเพจที่คุณดูแลได้เลย
+            {canEdit ? 'เพิ่ม แก้ไข หรือลบเพจที่ดูแลได้เลย' : 'รายการเพจที่แอดมินดูแล'}
           </div>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>
-          + เพิ่มเพจ
-        </button>
+        {canEdit && (
+          <button className="btn btn-primary" onClick={openAdd}>+ เพิ่มเพจ</button>
+        )}
       </div>
 
       {/* Empty state */}
@@ -139,10 +140,14 @@ function MyPagesTab({ user, toast }) {
         <div className="empty-state" style={{ padding:'48px 20px' }}>
           <div className="empty-icon">📄</div>
           <div className="empty-title">ยังไม่มีเพจที่รับผิดชอบ</div>
-          <div className="empty-desc">คลิก "+ เพิ่มเพจ" เพื่อกรอกข้อมูลเพจที่คุณดูแล</div>
-          <button className="btn btn-primary" style={{ marginTop:16 }} onClick={openAdd}>
-            + เพิ่มเพจแรก
-          </button>
+          <div className="empty-desc">
+            {canEdit ? 'คลิก "+ เพิ่มเพจ" เพื่อกรอกข้อมูลเพจที่ดูแล' : 'แอดมินคนนี้ยังไม่ได้เพิ่มเพจ'}
+          </div>
+          {canEdit && (
+            <button className="btn btn-primary" style={{ marginTop:16 }} onClick={openAdd}>
+              + เพิ่มเพจแรก
+            </button>
+          )}
         </div>
       )}
 
@@ -190,13 +195,15 @@ function MyPagesTab({ user, toast }) {
 
                   {/* Actions */}
                   <div style={{ display:'flex', gap:7, flexShrink:0 }}>
-                    <button className="btn btn-ghost btn-sm btn-icon"
-                      onClick={() => openEdit(entry)} title="แก้ไข">✏️</button>
-                    <button className="btn btn-danger btn-sm btn-icon"
-                      onClick={() => handleDelete(entry)}
-                      disabled={deleting === entry.id} title="ลบ">
-                      {deleting === entry.id ? '⏳' : '🗑️'}
-                    </button>
+                    {canEdit && <>
+                      <button className="btn btn-ghost btn-sm btn-icon"
+                        onClick={() => openEdit(entry)} title="แก้ไข">✏️</button>
+                      <button className="btn btn-danger btn-sm btn-icon"
+                        onClick={() => handleDelete(entry)}
+                        disabled={deleting === entry.id} title="ลบ">
+                        {deleting === entry.id ? '⏳' : '🗑️'}
+                      </button>
+                    </>}
                   </div>
                 </div>
 
@@ -386,24 +393,29 @@ export default function ProfilePage() {
 
   const [viewMode,  setViewMode]  = useState('me');
   const [adminList, setAdminList] = useState([]);
+  const [allPages,  setAllPages]  = useState([]); // เพจทั้งหมดของทุก admin (สำหรับ manager)
   const [loading,   setLoading]   = useState(true);
   const [saving,    setSaving]    = useState(false);
   const [tab,       setTab]       = useState('info');
   const [editMode,  setEditMode]  = useState(false);
 
-  const [form,   setForm]   = useState({ firstName:'', lastName:'', phone:'', lineId:'', position:'', bio:'' });
+  const [form,     setForm]     = useState({ firstName:'', lastName:'', phone:'', lineId:'', position:'', bio:'' });
   const [roleForm, setRoleForm] = useState('admin');
-  const [pwForm, setPwForm] = useState({ current:'', next:'', next2:'' });
-  const [showPw, setShowPw] = useState({ c:false, n:false, n2:false });
+  const [pwForm,   setPwForm]   = useState({ current:'', next:'', next2:'' });
+  const [showPw,   setShowPw]   = useState({ c:false, n:false, n2:false });
 
   useEffect(() => { loadData(); }, []); // eslint-disable-line
 
   async function loadData() {
     setLoading(true);
     try {
-      const res = await api.getAdminProfiles();
-      const all = res.data || [];
+      const [profilesRes, pagesRes] = await Promise.all([
+        api.getAdminProfiles(),
+        canManage ? api.getMyPageEntries({}) : Promise.resolve({ data: [] }),
+      ]);
+      const all = profilesRes.data || [];
       setAdminList(all);
+      setAllPages(pagesRes.data || []);
       const me = all.find(u => u.email === user.email) || user;
       initForm(me);
     } catch(e) { toast.error(e.message); }
@@ -479,6 +491,7 @@ export default function ProfilePage() {
     { id:'info',     label:'👤 ข้อมูลส่วนตัว' },
     { id:'pages',    label:'📄 เพจที่รับผิดชอบ' },
     ...(isSelf ? [{ id:'password', label:'🔑 รหัสผ่าน' }] : []),
+    ...(canManage && isSelf ? [{ id:'overview', label:'🗂️ ภาพรวมทีม' }] : []),
   ];
 
   return (
@@ -643,10 +656,15 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* Tab: My Pages — แอดมินจัดการเองทั้งหมด */}
+          {/* Tab: My Pages — เพิ่ม/แก้ไข/ลบได้ทั้งตัวเองและ manager */}
           {tab==='pages' && (
             <div className="card">
-              <MyPagesTab user={isSelf ? user : currentUser} toast={toast}/>
+              <MyPagesTab
+                user={isSelf ? user : currentUser}
+                toast={toast}
+                canEdit={true}
+                viewerName={isSelf ? '' : (currentUser.displayName || currentUser.firstName || currentUser.email)}
+              />
             </div>
           )}
 
@@ -682,8 +700,307 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {/* Tab: ภาพรวมทีม (manager only) */}
+          {tab==='overview' && canManage && (
+            <AllAdminPagesView
+              adminList={adminList}
+              allPages={allPages}
+              toast={toast}
+              onRefresh={loadData}
+            />
+          )}
+
         </>)}
       </div>
+    </div>
+  );
+}
+
+// ── AllAdminPagesView — ผู้บริหาร/หัวหน้าเห็นเพจทุกคน ────────
+function AllAdminPagesView({ adminList, allPages, toast, onRefresh }) {
+  const [search,     setSearch]     = useState('');
+  const [expanding,  setExpanding]  = useState({});
+  const [editTarget, setEditTarget] = useState(null); // { entry, user }
+  const [editForm,   setEditForm]   = useState({});
+  const [saving,     setSaving]     = useState(false);
+  const [deleting,   setDeleting]   = useState(null);
+
+  const CATEGORIES = ['General','ธุรกิจ','ความบันเทิง','ข่าวสาร','สุขภาพ','การศึกษา','อื่นๆ'];
+
+  // จับคู่ admin กับ pages ของเขา
+  const adminWithPages = adminList.map(admin => ({
+    ...admin,
+    pages: allPages.filter(p => p.userEmail === admin.email),
+  })).filter(a =>
+    !search ||
+    (a.displayName || a.email || '').toLowerCase().includes(search.toLowerCase()) ||
+    a.pages.some(p => p.pageName?.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  function openEdit(entry, adminUser) {
+    setEditTarget({ entry, user: adminUser });
+    const days = entry.workDays ? entry.workDays.split(',').filter(Boolean) : [];
+    setEditForm({ ...entry, workDays: days });
+  }
+
+  async function saveEdit() {
+    setSaving(true);
+    try {
+      await api.updateMyPageEntry({
+        ...editForm,
+        id: editTarget.entry.id,
+        workDays: Array.isArray(editForm.workDays) ? editForm.workDays.join(',') : editForm.workDays,
+        followers: Number(editForm.followers) || 0,
+      });
+      toast.success('แก้ไขสำเร็จ');
+      setEditTarget(null);
+      onRefresh();
+    } catch(e) { toast.error(e.message); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(entry) {
+    if (!window.confirm(`ลบเพจ "${entry.pageName}" ของ ${entry.userName}?`)) return;
+    setDeleting(entry.id);
+    try {
+      await api.deleteMyPageEntry(entry.id);
+      toast.success('ลบสำเร็จ');
+      onRefresh();
+    } catch(e) { toast.error(e.message); }
+    finally { setDeleting(null); }
+  }
+
+  const totalPages = allPages.length;
+  const totalAdmins = adminList.filter(a => allPages.some(p => p.userEmail === a.email)).length;
+
+  return (
+    <div>
+      {/* Summary stats */}
+      <div className="stats-grid" style={{ marginBottom:20 }}>
+        {[
+          { icon:'👥', label:'แอดมินทั้งหมด', value: adminList.length, color:'#6366f1' },
+          { icon:'📄', label:'เพจรวมทั้งหมด', value: totalPages, color:'#8b5cf6' },
+          { icon:'✅', label:'แอดมินที่มีเพจ', value: totalAdmins, color:'#10b981' },
+          { icon:'📋', label:'เพจเฉลี่ยต่อคน', value: adminList.length ? (totalPages/adminList.length).toFixed(1) : 0, color:'#f59e0b' },
+        ].map((s,i) => (
+          <div key={i} className="stat-card" style={{ '--accent-color': s.color }}>
+            <div className="stat-icon">{s.icon}</div>
+            <div className="stat-label">{s.label}</div>
+            <div className="stat-value">{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div style={{ marginBottom:16 }}>
+        <input className="form-input" style={{ maxWidth:340 }}
+          placeholder="🔍 ค้นหาแอดมินหรือชื่อเพจ..."
+          value={search} onChange={e => setSearch(e.target.value)}/>
+      </div>
+
+      {/* Admin list */}
+      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        {adminWithPages.map(admin => {
+          const expanded = expanding[admin.email] !== false; // default open
+          const initials = (admin.displayName || admin.email || '?').charAt(0).toUpperCase();
+          return (
+            <div key={admin.email} className="card" style={{ padding:0, overflow:'hidden' }}>
+              {/* Admin header */}
+              <div
+                onClick={() => setExpanding(e => ({ ...e, [admin.email]: !expanded }))}
+                style={{
+                  padding:'14px 18px', cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:12,
+                  background: expanded ? 'rgba(99,102,241,0.03)' : 'white',
+                  borderBottom: expanded ? '1px solid var(--border)' : 'none',
+                  transition:'background .15s',
+                }}
+              >
+                <div className="user-avatar-placeholder" style={{ width:38, height:38, fontSize:15, flexShrink:0 }}>
+                  {initials}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)' }}>
+                    {admin.displayName || `${admin.firstName||''} ${admin.lastName||''}`.trim() || admin.email}
+                  </div>
+                  <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:2 }}>
+                    <span className={`tag ${admin.role==='executive'?'tag-gold':admin.role==='head'?'tag-blue':'tag-green'}`} style={{ fontSize:9 }}>
+                      {admin.role==='executive'?'ผู้บริหาร':admin.role==='head'?'หัวหน้า':'แอดมิน'}
+                    </span>
+                    <span style={{ fontSize:11, color:'var(--text-muted)' }}>{admin.email}</span>
+                  </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{
+                    background: admin.pages.length > 0 ? 'rgba(99,102,241,0.1)' : 'var(--bg-hover)',
+                    color: admin.pages.length > 0 ? 'var(--brand-primary)' : 'var(--text-muted)',
+                    fontSize:12, fontWeight:700, padding:'3px 10px', borderRadius:20,
+                    border: `1px solid ${admin.pages.length > 0 ? 'rgba(99,102,241,0.2)' : 'var(--border)'}`,
+                  }}>
+                    {admin.pages.length} เพจ
+                  </span>
+                  <span style={{ color:'var(--text-muted)', fontSize:14 }}>{expanded ? '▲' : '▼'}</span>
+                </div>
+              </div>
+
+              {/* Pages list */}
+              {expanded && (
+                <div style={{ padding:'12px 18px' }}>
+                  {admin.pages.length === 0 ? (
+                    <div style={{ textAlign:'center', padding:'20px', color:'var(--text-muted)', fontSize:13 }}>
+                      ยังไม่มีเพจที่บันทึกไว้
+                    </div>
+                  ) : (
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:10 }}>
+                      {admin.pages.map(entry => {
+                        const days = entry.workDays ? entry.workDays.split(',').filter(Boolean) : [];
+                        return (
+                          <div key={entry.id} style={{
+                            border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px',
+                            background:'var(--bg-hover)',
+                            borderLeft:'3px solid var(--brand-primary)',
+                          }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                              <div style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)' }}>
+                                📄 {entry.pageName}
+                              </div>
+                              <div style={{ display:'flex', gap:5 }}>
+                                <button className="btn btn-ghost btn-sm btn-icon"
+                                  onClick={() => openEdit(entry, admin)} title="แก้ไข"
+                                  style={{ padding:'4px 6px', fontSize:13 }}>✏️</button>
+                                <button className="btn btn-danger btn-sm btn-icon"
+                                  onClick={() => handleDelete(entry)}
+                                  disabled={deleting === entry.id}
+                                  style={{ padding:'4px 6px', fontSize:13 }}>
+                                  {deleting === entry.id ? '⏳' : '🗑️'}
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:6 }}>
+                              <span className="tag tag-purple" style={{ fontSize:9 }}>{entry.category}</span>
+                              {entry.followers > 0 && (
+                                <span style={{ fontSize:10, color:'var(--text-muted)' }}>
+                                  👥 {Number(entry.followers).toLocaleString()}
+                                </span>
+                              )}
+                              {entry.pageUrl && (
+                                <a href={entry.pageUrl.startsWith('http')?entry.pageUrl:`https://${entry.pageUrl}`}
+                                   target="_blank" rel="noreferrer"
+                                   style={{ fontSize:10, color:'var(--brand-primary)', textDecoration:'none' }}>
+                                  🔗 ลิงก์
+                                </a>
+                              )}
+                            </div>
+                            {days.length > 0 && (
+                              <div style={{ fontSize:10, color:'var(--text-muted)', marginBottom:4 }}>
+                                📅 {days.join(', ')}
+                                {entry.workHours && ` · ${entry.workHours}`}
+                              </div>
+                            )}
+                            {entry.duties && (
+                              <div style={{ fontSize:11, color:'var(--text-secondary)', lineHeight:1.5 }}>
+                                {entry.duties}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {adminWithPages.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-icon">🔍</div>
+            <div className="empty-title">ไม่พบผลลัพธ์</div>
+          </div>
+        )}
+      </div>
+
+      {/* Edit Modal */}
+      {editTarget && (
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setEditTarget(null)}>
+          <div className="modal" style={{ maxWidth:540 }}>
+            <div className="modal-header">
+              <div className="modal-title">
+                ✏️ แก้ไขเพจของ {editTarget.user.displayName || editTarget.user.email}
+              </div>
+              <button className="modal-close" onClick={() => setEditTarget(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">ชื่อเพจ *</label>
+                  <input className="form-input" value={editForm.pageName||''}
+                    onChange={e => setEditForm(f=>({...f,pageName:e.target.value}))}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">หมวดหมู่</label>
+                  <select className="form-select" value={editForm.category||'General'}
+                    onChange={e => setEditForm(f=>({...f,category:e.target.value}))}>
+                    {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">ลิงก์เพจ</label>
+                  <input className="form-input" value={editForm.pageUrl||''}
+                    onChange={e => setEditForm(f=>({...f,pageUrl:e.target.value}))}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Followers</label>
+                  <input type="number" className="form-input" value={editForm.followers||''}
+                    onChange={e => setEditForm(f=>({...f,followers:e.target.value}))}/>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">วันที่ดูแล</label>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  {DAY_OPTS.map(day => {
+                    const days = Array.isArray(editForm.workDays) ? editForm.workDays : (editForm.workDays||'').split(',');
+                    const sel  = days.includes(day);
+                    return (
+                      <button key={day} type="button" onClick={() => {
+                        const cur = Array.isArray(editForm.workDays) ? editForm.workDays : (editForm.workDays||'').split(',').filter(Boolean);
+                        setEditForm(f => ({ ...f, workDays: sel ? cur.filter(d=>d!==day) : [...cur, day] }));
+                      }} style={{
+                        padding:'5px 12px', borderRadius:20, cursor:'pointer', fontSize:11, fontWeight:600,
+                        background: sel ? 'var(--brand-primary)' : 'var(--bg-hover)',
+                        color: sel ? 'white' : 'var(--text-secondary)',
+                        border: `1.5px solid ${sel ? 'var(--brand-primary)' : 'var(--border-strong)'}`,
+                      }}>{day}</button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">เวลาที่ดูแล</label>
+                <input className="form-input" placeholder="09:00 - 18:00" value={editForm.workHours||''}
+                  onChange={e => setEditForm(f=>({...f,workHours:e.target.value}))}/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">หน้าที่รับผิดชอบ</label>
+                <textarea className="form-textarea" rows={3} value={editForm.duties||''}
+                  onChange={e => setEditForm(f=>({...f,duties:e.target.value}))}/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">บันทึกเพิ่มเติม</label>
+                <textarea className="form-textarea" rows={2} value={editForm.notes||''}
+                  onChange={e => setEditForm(f=>({...f,notes:e.target.value}))}/>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setEditTarget(null)}>ยกเลิก</button>
+              <button className="btn btn-primary" onClick={saveEdit} disabled={saving}>
+                {saving ? '⏳...' : '💾 บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
