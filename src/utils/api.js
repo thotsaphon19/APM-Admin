@@ -56,6 +56,11 @@ export const api = {
   addLeave:           (d) => callAPI('addLeave', d),
   updateLeaveStatus:  (d) => callAPI('updateLeaveStatus', d),
   deleteLeave:       (id) => callAPI('deleteLeave', { id }),
+  // My Page Entries (admin self-managed)
+  getMyPageEntries:   (d) => callAPI('getMyPageEntries', d),
+  addMyPageEntry:     (d) => callAPI('addMyPageEntry', d),
+  updateMyPageEntry:  (d) => callAPI('updateMyPageEntry', d),
+  deleteMyPageEntry: (id) => callAPI('deleteMyPageEntry', { id }),
   // Notifications
   getNotifications:   (d) => callAPI('getNotifications', d),
   markNotifRead:      (d) => callAPI('markNotifRead', d),
