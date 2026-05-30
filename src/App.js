@@ -12,6 +12,7 @@ import ReportsPage  from './pages/ReportsPage';
 import PersonalPage from './pages/PersonalPage';
 import ProfilePage  from './pages/ProfilePage';
 import LeavePage    from './pages/LeavePage';
+import TeamOverviewPage from './pages/TeamOverviewPage';
 import './App.css';
 
 function AppContent() {
@@ -35,8 +36,9 @@ function AppContent() {
     users:     <UsersPage/>,
     pages:     <PagesPage/>,
     reports:   <ReportsPage/>,
-    profile:   <ProfilePage/>,
-    leave:     <LeavePage/>,
+    profile:      <ProfilePage/>,
+    leave:        <LeavePage/>,
+    teamoverview: <TeamOverviewPage/>,
   };
 
   return (
