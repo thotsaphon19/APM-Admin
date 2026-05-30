@@ -494,12 +494,12 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div style={{ display:'flex', gap:20, alignItems:'flex-start' }}>
+    <div className="profile-layout" style={{ display:'flex', gap:20, alignItems:'flex-start' }}>
       <ToastContainer toasts={toasts} removeToast={remove}/>
 
       {/* ── Manager sidebar ── */}
       {canManage && (
-        <div style={{ width:220, flexShrink:0 }}>
+        <div className="profile-sidebar" style={{ width:220, flexShrink:0 }}>
           <div className="card" style={{ padding:0, overflow:'hidden' }}>
             <div style={{ padding:'13px 16px', borderBottom:'1px solid var(--border)', fontWeight:700, fontSize:13 }}>
               👥 ทีมแอดมิน
