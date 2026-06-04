@@ -1,0 +1,881 @@
+import React, { useState, useMemo, useRef } from 'react'
+import { format, addDays, parseISO } from 'date-fns'
+import { th } from 'date-fns/locale'
+import { useAuth } from '../../contexts/AuthContext'
+import { useData } from '../../contexts/DataContext'
+import { useNotify } from '../../hooks/useNotify'
+import { Edit2, Trash2, ChevronDown, ChevronUp, Plus, X, RefreshCw, Upload, AlertTriangle, Search } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { computeDailyCommissions, splitNightShiftOrders, calcFullCommission, calcDailyQuotaCommission } from './commissionEngine'
+
+const today     = format(new Date(), 'yyyy-MM-dd')
+const thisMonth = format(new Date(), 'yyyy-MM')
+
+const S = { width:'100%', background:'#fff', border:'1.5px solid #dde3f5', borderRadius:10, color:'#1e1b4b', fontFamily:'inherit', fontSize:14, padding:'9px 12px', outline:'none' }
+
+export default function Commission() {
+  const { profile, user, canEdit, isAdmin, isSuperAdmin } = useAuth()
+  const {
+    commissions, pages, users, commRates,
+    createCommission, editCommission, removeCommission,
+    backendOrders, importBackendOrders,
+    cancelledOrders, addCancel, removeCancel,
+    getUserName, getPageName,
+  } = useData()
+  const { notifyCommission } = useNotify()
+
+  const myUid = user?.uid || profile?.id || ''
+
+  // ── form state ────────────────────────────────────
+  const [showForm,   setShowForm]   = useState(false)
+  const [showCancel, setShowCancel] = useState(false)
+  const [showBackend,setShowBackend]= useState(false)
+  const [editItem,   setEditItem]   = useState(null)
+  const [saving,     setSaving]     = useState(false)
+  const [err,        setErr]        = useState('')
+  const [expandRow,  setExpandRow]  = useState(null)
+  const [tab,        setTab]        = useState('orders') // orders | backend | cancelled | analysis
+  const [filters,    setFilters]    = useState({ date:today, month:'', adminId:'', pageId:'' })
+  const [search,     setSearch]     = useState('')
+
+  const makeBlank = () => ({
+    date:today, adminId: isAdmin ? myUid : '',
+    pageId:'', shift:'day',
+    manualOrders:'', manualRate: commRates.manualRate ?? 5,
+    aiOrders:'',     aiRate:     commRates.aiRate     ?? 2,
+    cancelOrders:'', unclearOrders:'',
+    // night shift cross-midnight fields
+    isNightSplit:false,
+    manualBefore:'', aiBefore:'', manualAfter:'', aiAfter:'',
+    note:'',
+  })
+  const [form, setForm] = useState(makeBlank)
+  const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+  const setFB = k => e => setForm(p => ({ ...p, [k]: e.target.checked }))
+
+  // cancel form
+  const [cancelForm, setCancelForm] = useState({ pageId:'', date:today, qty:1, amount:0, reason:'' })
+  const setCF = k => e => setCancelForm(p => ({...p, [k]: e.target.value}))
+
+  // backend import
+  const backendFileRef = useRef(null)
+  const [backendPreview, setBackendPreview] = useState(null)
+
+  const admins  = users.filter(u => ['admin','head_admin'].includes(u.role))
+  const myPages = isAdmin ? pages.filter(p => p.assignedTo?.includes(myUid) && p.status==='active') : pages
+
+  // ── filtered commissions ──────────────────────────
+  const filtered = useMemo(() => {
+    let d = isAdmin ? commissions.filter(c => c.adminId === myUid) : [...commissions]
+    if (filters.date && !filters.month) d = d.filter(c => c.date === filters.date)
+    if (filters.month) d = d.filter(c => c.date?.startsWith(filters.month))
+    if (filters.adminId) d = d.filter(c => c.adminId === filters.adminId)
+    if (filters.pageId)  d = d.filter(c => c.pageId  === filters.pageId)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      d = d.filter(c =>
+        getUserName(c.adminId)?.toLowerCase().includes(q) ||
+        getPageName(c.pageId)?.toLowerCase().includes(q)  ||
+        c.date?.includes(q) ||
+        c.note?.toLowerCase().includes(q)
+      )
+    }
+    return d.sort((a,b) => (b.date||'').localeCompare(a.date||''))
+  }, [commissions, filters, isAdmin, myUid])
+
+  // ── analysis: compute full enriched commissions ───
+  const analysisDate = filters.date || today
+  const analysis = useMemo(() => {
+    const dayComms   = commissions.filter(c => c.date === analysisDate)
+    const dayBackend = backendOrders.filter(b => b.date === analysisDate)
+    const dayCancel  = cancelledOrders.filter(c => c.originalDate === analysisDate)
+    if (!dayComms.length) return []
+    return computeDailyCommissions(dayComms, dayBackend, dayCancel, commRates.manualRate||5, commRates.aiRate||2)
+  }, [commissions, backendOrders, cancelledOrders, analysisDate, commRates])
+
+  // ── totals ────────────────────────────────────────
+  const totals = useMemo(() => filtered.reduce((a,c) => ({
+    manual:  a.manual  + (c.manualOrders  ||0),
+    ai:      a.ai      + (c.aiOrders      ||0),
+    mComm:   a.mComm   + (c.manualTotal   ||0),
+    aComm:   a.aComm   + (c.aiTotal       ||0),
+    cancel:  a.cancel  + (c.cancelOrders  ||0),
+    unclear: a.unclear + (c.unclearOrders ||0),
+    total:   a.total   + (c.total         ||0),
+  }), { manual:0,ai:0,mComm:0,aComm:0,cancel:0,unclear:0,total:0 }), [filtered])
+
+  // ── night split preview ───────────────────────────
+  const previewManual = form.isNightSplit
+    ? (parseInt(form.manualBefore)||0) + (parseInt(form.manualAfter)||0)
+    : (parseInt(form.manualOrders)||0)
+  const previewAI = form.isNightSplit
+    ? (parseInt(form.aiBefore)||0) + (parseInt(form.aiAfter)||0)
+    : (parseInt(form.aiOrders)||0)
+  const previewBaseTotal = previewManual*(parseFloat(form.manualRate)||0) + previewAI*(parseFloat(form.aiRate)||0)
+
+  // ── quota preview ─────────────────────────────────
+  const useQuota    = commRates.useQuota    || false
+  const dailyQuota  = commRates.dailyQuota  || 0
+  const dailySalary = commRates.dailySalary || 0
+  const overRate    = commRates.overRate    || commRates.manualRate || 5
+
+  const quotaResult = useQuota && dailyQuota > 0
+    ? calcDailyQuotaCommission(previewManual+previewAI, dailyQuota, dailySalary, overRate)
+    : null
+
+  const previewTotal = quotaResult ? quotaResult.totalPay : previewBaseTotal
+
+  // ── save commission ───────────────────────────────
+  const handleSave = async () => {
+    if (!form.adminId || !form.pageId || !form.date) { setErr('กรุณากรอก วันที่ / แอดมิน / เพจ'); return }
+    setSaving(true); setErr('')
+    try {
+      if (form.isNightSplit && form.shift === 'night') {
+        // Rule 8: split into 2 records
+        const splits = splitNightShiftOrders({
+          adminId: form.adminId, pageId: form.pageId, startDate: form.date,
+          manualBeforeMidnight: parseInt(form.manualBefore)||0,
+          aiBeforeMidnight:     parseInt(form.aiBefore)||0,
+          manualAfterMidnight:  parseInt(form.manualAfter)||0,
+          aiAfterMidnight:      parseInt(form.aiAfter)||0,
+          manualRate: parseFloat(form.manualRate)||0,
+          aiRate:     parseFloat(form.aiRate)||0,
+          cancelOrders:  parseInt(form.cancelOrders)||0,
+          unclearOrders: parseInt(form.unclearOrders)||0,
+          note: form.note,
+        })
+        for (const s of splits) {
+          if (editItem) await editCommission(editItem.id, s)
+          else await createCommission(s)
+        }
+      } else {
+        const mTotal = (parseInt(form.manualOrders)||0) * (parseFloat(form.manualRate)||0)
+        const aTotal = (parseInt(form.aiOrders)||0)     * (parseFloat(form.aiRate)||0)
+        const data = {
+          ...form,
+          manualOrders:  parseInt(form.manualOrders)||0,
+          manualRate:    parseFloat(form.manualRate)||0,
+          aiOrders:      parseInt(form.aiOrders)||0,
+          aiRate:        parseFloat(form.aiRate)||0,
+          cancelOrders:  parseInt(form.cancelOrders)||0,
+          unclearOrders: parseInt(form.unclearOrders)||0,
+          manualTotal: mTotal, aiTotal: aTotal, total: mTotal+aTotal,
+        }
+        delete data.isNightSplit
+        delete data.manualBefore; delete data.aiBefore
+        delete data.manualAfter;  delete data.aiAfter
+        if (editItem) await editCommission(editItem.id, data)
+        else await createCommission(data)
+      }
+      notifyCommission(editItem?'edit':'add', getPageName(form.pageId)+' · '+form.date)
+      setShowForm(false); setForm(makeBlank()); setEditItem(null)
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  // ── save cancelled order ──────────────────────────
+  const handleSaveCancel = async () => {
+    if (!cancelForm.pageId || !cancelForm.date) { setErr('กรุณาระบุเพจและวันที่'); return }
+    setSaving(true)
+    try {
+      await addCancel({
+        pageId:       cancelForm.pageId,
+        originalDate: cancelForm.date,
+        qty:          parseInt(cancelForm.qty)||1,
+        amount:       parseFloat(cancelForm.amount)||0,
+        reason:       cancelForm.reason,
+      })
+      notifyCommission('edit', `ยกเลิก ${cancelForm.qty} บ้าน เพจ ${getPageName(cancelForm.pageId)}`)
+      setShowCancel(false)
+      setCancelForm({ pageId:'', date:today, qty:1, amount:0, reason:'' })
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  // ── import backend Excel ──────────────────────────
+  const handleBackendFile = (file) => {
+    const reader = new FileReader()
+    reader.onload = evt => {
+      try {
+        const wb   = XLSX.read(evt.target.result, { type:'binary' })
+        const ws   = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' })
+        const headers = rows[0]?.map(h => String(h||'').toLowerCase()) || []
+        const pageIdx  = headers.findIndex(h => h.includes('เพจ')||h.includes('page'))
+        const dateIdx  = headers.findIndex(h => h.includes('วัน')||h.includes('date'))
+        const countIdx = headers.findIndex(h => h.includes('จำนวน')||h.includes('count')||h.includes('actual'))
+        const data = rows.slice(1).filter(r=>r.some(c=>c)).map(r => ({
+          pageId:      String(r[pageIdx]||'').trim(),
+          date:        String(r[dateIdx]||today).trim(),
+          actualCount: parseInt(r[countIdx])||0,
+        })).filter(r => r.pageId)
+        setBackendPreview(data)
+      } catch(e) { setErr('อ่านไฟล์ไม่สำเร็จ: '+e.message) }
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  const handleImportBackend = async () => {
+    if (!backendPreview?.length) return
+    setSaving(true)
+    try {
+      await importBackendOrders(backendPreview)
+      setBackendPreview(null); setShowBackend(false)
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  const openEdit = (item) => { setForm({...item, isNightSplit:false}); setEditItem(item); setErr(''); setShowForm(true) }
+  const close    = () => { setShowForm(false); setEditItem(null); setErr('') }
+
+  // ── tab items ─────────────────────────────────────
+  const TABS = [
+    { k:'orders',   label:'💰 ออเดอร์',      count: filtered.length },
+    { k:'analysis', label:'🧮 คำนวณค่าคอม',  count: analysis.length },
+    { k:'backend',  label:'🖥️ หลังบ้าน',      count: backendOrders.filter(b=>b.date===analysisDate).length },
+    { k:'cancelled',label:'❌ ยกเลิก',        count: cancelledOrders.length },
+  ]
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {/* ── Header ── */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+        <div>
+          <h2 style={{ fontSize:20, fontWeight:900, color:'#1e1b4b', marginBottom:3 }}>💰 ค่าคอมมิชชั่น</h2>
+          <p style={{ fontSize:12.5, color:'#6b7280' }}>
+            มือ ฿{commRates.manualRate}/บ้าน · AI ฿{commRates.aiRate}/บ้าน ·
+            รองรับหลายคนต่อเพจ · ชนกับ Backend · ออเดอร์ยกเลิก
+          </p>
+        </div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {canEdit && (
+            <>
+              <button onClick={() => setShowCancel(true)}
+                style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:10, padding:'9px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#be123c', fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>
+                <X size={14}/> บันทึกยกเลิก
+              </button>
+              <button onClick={() => setShowBackend(true)}
+                style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'9px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>
+                <Upload size={14}/> Import Backend
+              </button>
+              <button onClick={() => { setShowForm(true); setEditItem(null); setForm(makeBlank()) }}
+                className="btn btn-primary">
+                <Plus size={15}/> ✏️ ลงข้อมูล
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── KPI ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:12 }}>
+        {[
+          { emoji:'💎', label:'ค่าคอมรวม',     val:`฿${totals.total.toLocaleString()}`,           bg:'linear-gradient(135deg,#eef2ff,#e0e7ff)', color:'#4338ca', border:'#c7d2fe' },
+          { emoji:'🖐',  label:'ตอบมือ (บ้าน)', val:`${totals.manual.toLocaleString()} → ฿${totals.mComm.toLocaleString()}`, bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', color:'#6d28d9', border:'#ddd6fe' },
+          { emoji:'🤖', label:'AI (บ้าน)',       val:`${totals.ai.toLocaleString()} → ฿${totals.aComm.toLocaleString()}`,    bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', color:'#0f766e', border:'#99f6e4' },
+          { emoji:'❌', label:'ยกเลิก / ไม่ชัด', val:`${totals.cancel} / ${totals.unclear}`,         bg:'linear-gradient(135deg,#fff1f2,#ffe4e6)', color:'#be123c', border:'#fecdd3' },
+        ].map((k,i) => (
+          <div key={i} style={{ background:k.bg, border:`1.5px solid ${k.border}`, borderRadius:14, padding:'16px 18px' }}>
+            <div style={{ fontSize:24, marginBottom:8 }}>{k.emoji}</div>
+            <div style={{ fontSize:15, fontWeight:900, color:k.color, lineHeight:1.3 }}>{k.val}</div>
+            <div style={{ fontSize:11.5, color:'#6b7280', marginTop:5, fontWeight:600 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Tabs ── */}
+      <div style={{ display:'flex', background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:12, padding:4, width:'fit-content', gap:3, flexWrap:'wrap' }}>
+        {TABS.map(t => (
+          <button key={t.k} onClick={() => setTab(t.k)}
+            style={{ padding:'8px 16px', borderRadius:9, border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
+              background: tab===t.k ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : 'transparent',
+              color: tab===t.k ? '#fff' : '#6366f1', display:'flex', alignItems:'center', gap:6 }}>
+            {t.label}
+            {t.count > 0 && (
+              <span style={{ background:tab===t.k?'rgba(255,255,255,.3)':'#c7d2fe', color:tab===t.k?'#fff':'#4338ca', borderRadius:99, padding:'1px 7px', fontSize:11, fontWeight:900 }}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Filters ── */}
+      <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:14, padding:'14px 18px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12, alignItems:'end' }}>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>🔍 ค้นหา</label>
+            <div style={{ position:'relative' }}>
+              <Search size={14} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'#9ca3af', pointerEvents:'none' }}/>
+              <input
+                style={{ ...S, paddingLeft:34 }}
+                placeholder="ชื่อแอดมิน, เพจ, วันที่, หมายเหตุ..."
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>📅 วันที่</label>
+            <input type="date" style={S} value={filters.date} onChange={e=>setFilters(p=>({...p,date:e.target.value,month:''}))}/>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>📆 เดือน</label>
+            <input type="month" style={S} value={filters.month} onChange={e=>setFilters(p=>({...p,month:e.target.value,date:''}))}/>
+          </div>
+          {!isAdmin && (
+            <div>
+              <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>👤 แอดมิน</label>
+              <select style={S} value={filters.adminId} onChange={e=>setFilters(p=>({...p,adminId:e.target.value}))}>
+                <option value="">ทั้งหมด</option>
+                {admins.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>📄 เพจ</label>
+            <select style={S} value={filters.pageId} onChange={e=>setFilters(p=>({...p,pageId:e.target.value}))}>
+              <option value="">ทั้งหมด</option>
+              {(isAdmin?myPages:pages).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <button onClick={()=>{ setFilters({date:today,month:'',adminId:'',pageId:''}); setSearch('') }}
+            style={{ background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:10, padding:'9px 14px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#4338ca', fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>
+            <RefreshCw size={13}/> รีเซ็ต
+          </button>
+          <button onClick={()=>setFilters(p=>({...p}))}
+            style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', border:'none', borderRadius:10, padding:'9px 20px', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7, boxShadow:'0 4px 12px rgba(99,102,241,.3)' }}>
+            <Search size={14}/> ค้นหา
+          </button>
+        </div>
+      </div>
+
+      {/* ══════════ TAB: ORDERS ══════════ */}
+      {tab === 'orders' && (
+        <>
+          {/* Inline form */}
+          {showForm && (
+            <div style={{ background:'#fff', border:'2px solid #6366f1', borderRadius:20, padding:26, boxShadow:'0 8px 32px rgba(99,102,241,.12)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:22 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:44, height:44, borderRadius:14, background:'linear-gradient(135deg,#6366f1,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>
+                    {editItem?'✏️':'📝'}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:17, fontWeight:900, color:'#1e1b4b' }}>{editItem?'แก้ไขข้อมูล':'ลงข้อมูลค่าคอม'}</div>
+                    <div style={{ fontSize:12, color:'#9ca3af' }}>รองรับหลายคนต่อเพจ · กะข้ามวัน</div>
+                  </div>
+                </div>
+                <button onClick={close} style={{ background:'#f1f5f9', border:'none', borderRadius:9, width:34, height:34, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#6b7280' }}><X size={15}/></button>
+              </div>
+              {err && <div style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:10, padding:'10px 14px', color:'#be123c', fontSize:13.5, marginBottom:14, display:'flex', gap:8 }}>❌ {err}</div>}
+
+              {/* Row 1: วันที่ + แอดมิน + กะ */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14, marginBottom:14 }}>
+                <div>
+                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📅 วันที่ *</label>
+                  <input type="date" style={S} value={form.date} onChange={setF('date')}/>
+                </div>
+                <div>
+                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>👤 แอดมิน *</label>
+                  <select style={S} value={form.adminId} onChange={setF('adminId')} disabled={isAdmin}>
+                    <option value="">-- เลือก --</option>
+                    {admins.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🕐 กะ</label>
+                  <select style={S} value={form.shift} onChange={setF('shift')}>
+                    <option value="day">☀️ กะกลางวัน</option>
+                    <option value="night">🌙 กะกลางคืน</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* เพจ */}
+              <div style={{ marginBottom:16 }}>
+                <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>📄 เพจ *</label>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
+                  {myPages.map(p => {
+                    const sel = form.pageId === p.id
+                    return (
+                      <button key={p.id} onClick={()=>setForm(pv=>({...pv,pageId:p.id}))}
+                        style={{ padding:'10px 14px', borderRadius:11, cursor:'pointer', textAlign:'left', fontFamily:'inherit', border:`1.5px solid ${sel?'#6366f1':'#dde3f5'}`, background:sel?'linear-gradient(135deg,#eef2ff,#e0e7ff)':'#fff', transition:'all .15s' }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:sel?'#4338ca':'#1e1b4b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {p.type==='main'?'⭐':'🧪'} {p.name}
+                        </div>
+                        {sel && <div style={{ fontSize:11, color:'#4338ca', fontWeight:700, marginTop:3 }}>✓ เลือกแล้ว</div>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Rule 8: Night shift split toggle */}
+              {form.shift === 'night' && (
+                <div style={{ background:'linear-gradient(135deg,#eef2ff,#e0e7ff)', border:'1.5px solid #c7d2fe', borderRadius:12, padding:'12px 16px', marginBottom:16 }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14, fontWeight:700, color:'#4338ca' }}>
+                    <input type="checkbox" checked={form.isNightSplit} onChange={setFB('isNightSplit')} style={{ width:17, height:17, accentColor:'#6366f1' }}/>
+                    🌙 กะข้ามวัน (แยกออเดอร์ก่อน/หลัง 00:00)
+                  </label>
+                  {form.isNightSplit && (
+                    <div style={{ marginTop:12, fontSize:12, color:'#4338ca' }}>
+                      ⚡ ออเดอร์ก่อน 00:00 บันทึกใต้วัน <strong>{form.date}</strong> · หลัง 00:00 บันทึกใต้วัน <strong>{form.date ? format(addDays(parseISO(form.date),1),'yyyy-MM-dd') : 'พรุ่งนี้'}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Orders input */}
+              {form.isNightSplit ? (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
+                  {/* Before midnight */}
+                  <div style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', border:'2px solid #ddd6fe', borderRadius:14, padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#6d28d9', marginBottom:12 }}>🌙 ก่อน 00:00 (นับวันนี้)</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#7c3aed', marginBottom:5 }}>🖐 มือ (บ้าน)</label>
+                        <input type="number" min="0" style={{...S,textAlign:'center',fontWeight:800,color:'#6d28d9'}} placeholder="0" value={form.manualBefore} onChange={setF('manualBefore')}/></div>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#7c3aed', marginBottom:5 }}>🤖 AI (บ้าน)</label>
+                        <input type="number" min="0" style={{...S,textAlign:'center',fontWeight:800,color:'#0f766e'}} placeholder="0" value={form.aiBefore} onChange={setF('aiBefore')}/></div>
+                    </div>
+                  </div>
+                  {/* After midnight */}
+                  <div style={{ background:'linear-gradient(135deg,#fefce8,#fef9c3)', border:'2px solid #fde68a', borderRadius:14, padding:16 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#854d0e', marginBottom:12 }}>🌅 หลัง 00:00 (นับวันพรุ่งนี้)</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#b45309', marginBottom:5 }}>🖐 มือ (บ้าน)</label>
+                        <input type="number" min="0" style={{...S,textAlign:'center',fontWeight:800,color:'#b45309'}} placeholder="0" value={form.manualAfter} onChange={setF('manualAfter')}/></div>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#b45309', marginBottom:5 }}>🤖 AI (บ้าน)</label>
+                        <input type="number" min="0" style={{...S,textAlign:'center',fontWeight:800,color:'#0f766e'}} placeholder="0" value={form.aiAfter} onChange={setF('aiAfter')}/></div>
+                    </div>
+                  </div>
+                  {/* Rates */}
+                  <div style={{ gridColumn:'1/-1', display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                    <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#7c3aed', marginBottom:5 }}>฿มือ / บ้าน</label><input type="number" min="0" step="0.5" style={{...S,textAlign:'center'}} value={form.manualRate} onChange={setF('manualRate')}/></div>
+                    <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#0d9488', marginBottom:5 }}>฿AI / บ้าน</label><input type="number" min="0" step="0.5" style={{...S,textAlign:'center'}} value={form.aiRate} onChange={setF('aiRate')}/></div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', border:'2px solid #ddd6fe', borderRadius:14, padding:16, marginBottom:12 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#6d28d9', marginBottom:12 }}>🖐 ตอบมือ</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#7c3aed', marginBottom:5 }}>จำนวน (บ้าน)</label>
+                        <input type="number" min="0" style={{...S,textAlign:'center',fontSize:16,fontWeight:800,color:'#6d28d9'}} placeholder="0" value={form.manualOrders} onChange={setF('manualOrders')}/></div>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#7c3aed', marginBottom:5 }}>฿ / บ้าน</label>
+                        <input type="number" min="0" step="0.5" style={{...S,textAlign:'center'}} value={form.manualRate} onChange={setF('manualRate')}/></div>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#7c3aed', marginBottom:5 }}>ยอดค่าคอม</label>
+                        <div style={{...S,background:'#ede9fe',border:'2px solid #c4b5fd',textAlign:'center',fontSize:16,fontWeight:900,color:'#6d28d9'}}>
+                          ฿{((parseInt(form.manualOrders)||0)*(parseFloat(form.manualRate)||0)).toLocaleString()}
+                        </div></div>
+                    </div>
+                  </div>
+                  <div style={{ background:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', border:'2px solid #99f6e4', borderRadius:14, padding:16, marginBottom:12 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'#0f766e', marginBottom:12 }}>🤖 AI</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#0d9488', marginBottom:5 }}>จำนวน (บ้าน)</label>
+                        <input type="number" min="0" style={{...S,textAlign:'center',fontSize:16,fontWeight:800,color:'#0f766e'}} placeholder="0" value={form.aiOrders} onChange={setF('aiOrders')}/></div>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#0d9488', marginBottom:5 }}>฿ / บ้าน</label>
+                        <input type="number" min="0" step="0.5" style={{...S,textAlign:'center'}} value={form.aiRate} onChange={setF('aiRate')}/></div>
+                      <div><label style={{ display:'block', fontSize:11, fontWeight:700, color:'#0d9488', marginBottom:5 }}>ยอดค่าคอม</label>
+                        <div style={{...S,background:'#ccfbf1',border:'2px solid #5eead4',textAlign:'center',fontSize:16,fontWeight:900,color:'#0f766e'}}>
+                          ฿{((parseInt(form.aiOrders)||0)*(parseFloat(form.aiRate)||0)).toLocaleString()}
+                        </div></div>
+                    </div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+                    <div><label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>❌ ยกเลิก (บ้าน)</label>
+                      <input type="number" min="0" style={{...S,textAlign:'center',color:'#be123c',fontWeight:700}} placeholder="0" value={form.cancelOrders} onChange={setF('cancelOrders')}/></div>
+                    <div><label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#d97706', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🔍 ไม่ชัดเจน (บ้าน)</label>
+                      <input type="number" min="0" style={{...S,textAlign:'center',color:'#d97706',fontWeight:700}} placeholder="0" value={form.unclearOrders} onChange={setF('unclearOrders')}/></div>
+                  </div>
+                </>
+              )}
+
+              <div style={{ marginBottom:18 }}>
+                <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📝 หมายเหตุ</label>
+                <textarea style={{...S,minHeight:60,resize:'vertical'}} placeholder="หมายเหตุ..." value={form.note} onChange={setF('note')}/>
+              </div>
+
+              {/* Summary */}
+              <div style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', borderRadius:12, padding:'14px 20px', marginBottom:18 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+                  <div style={{ color:'rgba(255,255,255,.85)', fontSize:13 }}>
+                    🖐 {previewManual} + 🤖 {previewAI} = {previewManual+previewAI} บ้าน
+                    {form.isNightSplit && form.shift==='night' && <span style={{ marginLeft:8, fontSize:11, opacity:.7 }}>· บันทึก 2 วัน</span>}
+                  </div>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:11, color:'rgba(255,255,255,.6)', marginBottom:2 }}>
+                      {quotaResult ? '💵 เงินรายวัน + ค่าคอมเกิน' : 'ค่าคอมรวม'}
+                    </div>
+                    <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>฿{previewTotal.toLocaleString()}</div>
+                  </div>
+                </div>
+                {quotaResult && (
+                  <div style={{ marginTop:10, borderTop:'1px solid rgba(255,255,255,.2)', paddingTop:10, display:'flex', flexWrap:'wrap', gap:12, fontSize:12 }}>
+                    <span style={{ color:'rgba(255,255,255,.8)' }}>
+                      🎯 โควต้า {dailyQuota} บ้าน: {quotaResult.quotaOrders} บ้านในโควต้า + {quotaResult.overOrders > 0 ? <><span style={{ color:'#fde68a', fontWeight:800 }}>{quotaResult.overOrders} บ้านที่เกิน → ฿{quotaResult.overCommission.toLocaleString()}</span></> : 'ไม่มีบ้านเกิน'}
+                    </span>
+                    <span style={{ color:'rgba(255,255,255,.8)' }}>
+                      💵 เงินรายวัน: ฿{dailySalary.toLocaleString ? dailySalary.toLocaleString() : dailySalary}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                <button onClick={close} style={{ background:'#f1f5f9', border:'1.5px solid #dde3f5', borderRadius:10, padding:'9px 20px', fontSize:14, fontWeight:700, color:'#6b7280', cursor:'pointer', fontFamily:'inherit' }}>ยกเลิก</button>
+                <button onClick={handleSave} disabled={saving} style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', border:'none', borderRadius:10, padding:'9px 24px', fontSize:14, fontWeight:800, color:'#fff', cursor:'pointer', fontFamily:'inherit', opacity:saving?0.6:1 }}>
+                  {saving?'⏳ กำลังบันทึก...':editItem?'✅ บันทึก':'💾 บันทึก'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Orders table */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
+            <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderBottom:'2px solid #e0e7ff' }}>
+                    {['📅','👤 แอดมิน','📄 เพจ','กะ','🖐 มือ','฿มือ','🤖 AI','฿AI','❌','💎 รวม',''].map((h,i)=>(
+                      <th key={i} style={{ padding:'10px 12px', textAlign:i>=4?'center':'left', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length===0 ? (
+                    <tr><td colSpan={11} style={{ textAlign:'center', padding:36 }}>
+                      <div style={{ fontSize:36, marginBottom:8 }}>📭</div>
+                      <div style={{ color:'#9ca3af', fontWeight:600 }}>ยังไม่มีข้อมูล</div>
+                    </td></tr>
+                  ) : filtered.map(c => {
+                    const sh = c.shift==='night' ? {bg:'#eef2ff',color:'#4338ca'} : {bg:'#fffbeb',color:'#b45309'}
+                    const isExp = expandRow===c.id
+                    return (
+                      <React.Fragment key={c.id}>
+                        <tr style={{ borderBottom:'1px solid #f0f4ff' }}>
+                          <td style={{ padding:'10px 12px', fontSize:12.5, color:'#6b7280' }}>
+                            {c.date}
+                            {c.segment==='after_midnight' && <div style={{ fontSize:10, color:'#6366f1', fontWeight:700 }}>🌅 หลังเที่ยงคืน</div>}
+                          </td>
+                          <td style={{ padding:'10px 12px' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                              <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
+                                {getUserName(c.adminId).slice(0,2)}
+                              </div>
+                              <span style={{ fontSize:13, fontWeight:600, color:'#1e1b4b' }}>{getUserName(c.adminId)}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding:'10px 12px', fontSize:13, color:'#4b5563', maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {getPageName(c.pageId)}
+                          </td>
+                          <td style={{ padding:'10px 8px' }}>
+                            <span style={{ background:sh.bg, color:sh.color, borderRadius:99, padding:'2px 8px', fontSize:11.5, fontWeight:700 }}>
+                              {c.shift==='night'?'🌙':'☀️'} {c.shift==='night'?'กลางคืน':'กลางวัน'}
+                            </span>
+                          </td>
+                          <td style={{ textAlign:'center', fontSize:15, fontWeight:800, color:'#6d28d9' }}>{c.manualOrders||0}</td>
+                          <td style={{ textAlign:'center', fontSize:12, color:'#7c3aed', fontWeight:600 }}>฿{(c.manualTotal||0).toLocaleString()}</td>
+                          <td style={{ textAlign:'center', fontSize:15, fontWeight:800, color:'#0f766e' }}>{c.aiOrders||0}</td>
+                          <td style={{ textAlign:'center', fontSize:12, color:'#0d9488', fontWeight:600 }}>฿{(c.aiTotal||0).toLocaleString()}</td>
+                          <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:(c.cancelOrders||0)>0?'#be123c':'#d1d5db' }}>{c.cancelOrders||0}</td>
+                          <td style={{ textAlign:'right', padding:'10px 12px', fontSize:16, fontWeight:900, color:'#4338ca' }}>฿{(c.total||0).toLocaleString()}</td>
+                          <td style={{ padding:'8px 8px' }}>
+                            <div style={{ display:'flex', gap:4 }}>
+                              <button onClick={()=>setExpandRow(isExp?null:c.id)} style={{ background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:7, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#6366f1' }}>
+                                {isExp?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
+                              </button>
+                              {canEdit&&(profile?.role!=='admin'||c.adminId===myUid)&&(
+                                <button onClick={()=>openEdit(c)} style={{ background:'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:7, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#059669' }}>
+                                  <Edit2 size={12}/>
+                                </button>
+                              )}
+                              {isSuperAdmin&&(
+                                <button onClick={async()=>{ await removeCommission(c.id); notifyCommission('delete','') }} style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:7, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#be123c' }}>
+                                  <Trash2 size={12}/>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {isExp && (
+                          <tr><td colSpan={11} style={{ padding:0 }}>
+                            <div style={{ background:'linear-gradient(135deg,#fafbff,#f5f3ff)', borderTop:'1px solid #e0e7ff', padding:'14px 18px', display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+                              {[
+                                {l:'🖐 มือ',v:`${c.manualOrders||0} บ้าน × ฿${c.manualRate||0} = ฿${(c.manualTotal||0).toLocaleString()}`,color:'#6d28d9',bg:'#f5f3ff',border:'#ddd6fe'},
+                                {l:'🤖 AI', v:`${c.aiOrders||0} บ้าน × ฿${c.aiRate||0} = ฿${(c.aiTotal||0).toLocaleString()}`,color:'#0f766e',bg:'#f0fdfa',border:'#99f6e4'},
+                                {l:'❌ ปัญหา',v:`ยกเลิก ${c.cancelOrders||0} · ไม่ชัด ${c.unclearOrders||0}`,color:'#be123c',bg:'#fff1f2',border:'#fecdd3'},
+                                {l:'💎 รวม',v:`฿${(c.total||0).toLocaleString()} · ${c.note||'ไม่มีหมายเหตุ'}`,color:'#4338ca',bg:'#eef2ff',border:'#c7d2fe'},
+                              ].map((d,i)=>(
+                                <div key={i} style={{ background:d.bg, border:`1.5px solid ${d.border}`, borderRadius:10, padding:12 }}>
+                                  <div style={{ fontSize:12, fontWeight:800, color:d.color, marginBottom:6 }}>{d.l}</div>
+                                  <div style={{ fontSize:13, color:'#4b5563' }}>{d.v}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </td></tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
+                  {filtered.length>0&&(
+                    <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderTop:'2px solid #c7d2fe' }}>
+                      <td colSpan={4} style={{ padding:'11px 12px', fontSize:12, fontWeight:800, color:'#4338ca' }}>รวม {filtered.length} รายการ</td>
+                      <td style={{ textAlign:'center', fontWeight:900, color:'#6d28d9', fontSize:15 }}>{totals.manual.toLocaleString()}</td>
+                      <td style={{ textAlign:'center', fontWeight:700, color:'#7c3aed', fontSize:12 }}>฿{totals.mComm.toLocaleString()}</td>
+                      <td style={{ textAlign:'center', fontWeight:900, color:'#0f766e', fontSize:15 }}>{totals.ai.toLocaleString()}</td>
+                      <td style={{ textAlign:'center', fontWeight:700, color:'#0d9488', fontSize:12 }}>฿{totals.aComm.toLocaleString()}</td>
+                      <td style={{ textAlign:'center', fontWeight:800, color:'#be123c' }}>{totals.cancel}</td>
+                      <td style={{ textAlign:'right', padding:'11px 12px', fontSize:18, fontWeight:900, color:'#4338ca' }}>฿{totals.total.toLocaleString()}</td>
+                      <td/>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ══════════ TAB: ANALYSIS (คำนวณ) ══════════ */}
+      {tab==='analysis' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:14, padding:'12px 18px', fontSize:13.5, color:'#92400e', fontWeight:600, display:'flex', alignItems:'flex-start', gap:8 }}>
+            <AlertTriangle size={16} style={{ flexShrink:0, marginTop:1 }}/>
+            <div>
+              <strong>คำนวณค่าคอมสุทธิ</strong> วันที่ <strong>{analysisDate}</strong>
+              <br/>รวม Rule 4 (หลายคนต่อเพจ), Rule 5-6 (ชนหลังบ้าน), Rule 7 (ออเดอร์ยกเลิก)
+            </div>
+          </div>
+
+          {analysis.length===0 ? (
+            <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, padding:36, textAlign:'center', color:'#9ca3af' }}>
+              <div style={{ fontSize:40, marginBottom:10 }}>🧮</div>
+              <div style={{ fontSize:14, color:'#6b7280', fontWeight:600 }}>ไม่มีข้อมูลออเดอร์วันที่เลือก</div>
+            </div>
+          ) : (
+            <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
+              <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderBottom:'2px solid #e0e7ff' }}>
+                      {['👤 แอดมิน','📄 เพจ','ค่าคอมตั้งต้น','สัดส่วน','หักออเดอร์หาย','หักยกเลิก','💎 สุทธิ','⚠️'].map((h,i)=>(
+                        <th key={i} style={{ padding:'10px 13px', textAlign:i>=2?'center':'left', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysis.map((r,i)=>(
+                      <tr key={i} style={{ borderBottom:'1px solid #f0f4ff', background:r.hasDeduction?'#fffafb':'transparent' }}>
+                        <td style={{ padding:'11px 13px' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                            <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
+                              {getUserName(r.adminId).slice(0,2)}
+                            </div>
+                            <span style={{ fontSize:13, fontWeight:600 }}>{getUserName(r.adminId)}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding:'11px 13px', fontSize:13, color:'#4b5563' }}>{getPageName(r.pageId)}</td>
+                        <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:'#4338ca' }}>฿{(r.total||0).toLocaleString()}</td>
+                        <td style={{ textAlign:'center', fontSize:13, color:'#6b7280' }}>
+                          {r.pagePeers > 1
+                            ? <span style={{ background:'#eef2ff', color:'#4338ca', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:700 }}>
+                                {Math.round((r.shareRatio||1)*100)}% ({r.pagePeers} คน)
+                              </span>
+                            : <span style={{ color:'#9ca3af', fontSize:12 }}>—</span>
+                          }
+                        </td>
+                        <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:(r.lostDeduction||0)>0?'#be123c':'#9ca3af' }}>
+                          {(r.lostDeduction||0)>0 ? `−฿${r.lostDeduction.toFixed(2)}` : '—'}
+                          {r.lostOrders>0 && <div style={{ fontSize:10, color:'#9ca3af' }}>{r.lostOrders} บ้าน</div>}
+                        </td>
+                        <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:(r.cancelDeduction||0)>0?'#be123c':'#9ca3af' }}>
+                          {(r.cancelDeduction||0)>0 ? `−฿${r.cancelDeduction.toFixed(2)}` : '—'}
+                          {r.cancelQty>0 && <div style={{ fontSize:10, color:'#9ca3af' }}>{r.cancelQty} บ้าน</div>}
+                        </td>
+                        <td style={{ textAlign:'center', padding:'11px 13px', fontSize:17, fontWeight:900, color: r.hasDeduction?'#be123c':'#059669' }}>
+                          ฿{(r.netTotal||0).toFixed(2)}
+                        </td>
+                        <td style={{ textAlign:'center', padding:'8px 10px' }}>
+                          {r.hasDeduction
+                            ? <span style={{ background:'#fff1f2', color:'#be123c', border:'1.5px solid #fecdd3', borderRadius:99, padding:'3px 9px', fontSize:11.5, fontWeight:700 }}>⚠️ มีหัก</span>
+                            : <span style={{ background:'#f0fdf4', color:'#059669', border:'1.5px solid #bbf7d0', borderRadius:99, padding:'3px 9px', fontSize:11.5, fontWeight:700 }}>✅ ปกติ</span>
+                          }
+                        </td>
+                      </tr>
+                    ))}
+                    <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderTop:'2px solid #c7d2fe' }}>
+                      <td colSpan={6} style={{ padding:'11px 13px', fontSize:12, fontWeight:800, color:'#4338ca' }}>รวมทั้งหมด</td>
+                      <td style={{ textAlign:'center', padding:'11px 13px', fontSize:18, fontWeight:900, color:'#4338ca' }}>
+                        ฿{analysis.reduce((a,r)=>a+(r.netTotal||0),0).toFixed(2)}
+                      </td>
+                      <td/>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════ TAB: BACKEND ══════════ */}
+      {tab==='backend' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {/* Import form */}
+          {showBackend && (
+            <div style={{ background:'#fffbeb', border:'2px solid #fde68a', borderRadius:16, padding:20 }}>
+              <input ref={backendFileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:'none' }} onChange={e=>e.target.files?.[0]&&handleBackendFile(e.target.files[0])}/>
+              <div style={{ fontSize:15, fontWeight:900, color:'#b45309', marginBottom:12 }}>🖥️ Import ออเดอร์จริงจาก Backend</div>
+              <div style={{ fontSize:12.5, color:'#92400e', marginBottom:14 }}>
+                ไฟล์ต้องมี column: <strong>เพจ / pageId</strong>, <strong>วันที่</strong>, <strong>จำนวนออเดอร์จริง</strong>
+              </div>
+              {!backendPreview ? (
+                <button onClick={()=>backendFileRef.current?.click()}
+                  style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:10, padding:'10px 22px', cursor:'pointer', fontSize:14, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7 }}>
+                  <Upload size={15}/> เลือกไฟล์ Excel
+                </button>
+              ) : (
+                <>
+                  <div style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:10, overflow:'hidden', marginBottom:14, maxHeight:200, overflowY:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                      <thead><tr style={{ background:'#fef3c7' }}>
+                        {['เพจ','วันที่','ออเดอร์จริง'].map((h,i)=><th key={i} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase' }}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>{backendPreview.map((r,i)=>(
+                        <tr key={i} style={{ borderBottom:'1px solid #fef3c7' }}>
+                          <td style={{ padding:'8px 12px', fontSize:13 }}>{r.pageId}</td>
+                          <td style={{ padding:'8px 12px', fontSize:13 }}>{r.date}</td>
+                          <td style={{ padding:'8px 12px', fontSize:13, fontWeight:700, color:'#b45309' }}>{r.actualCount}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                  <div style={{ display:'flex', gap:10 }}>
+                    <button onClick={()=>setBackendPreview(null)} style={{ background:'#f1f5f9', border:'1.5px solid #dde3f5', borderRadius:9, padding:'8px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
+                    <button onClick={handleImportBackend} disabled={saving} style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:9, padding:'8px 20px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit' }}>
+                      ✅ Import {backendPreview.length} รายการ
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {/* Backend list */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
+            <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', fontSize:14, fontWeight:800, color:'#b45309' }}>
+              🖥️ ออเดอร์จริงจากหลังบ้าน ({backendOrders.length} รายการ)
+            </div>
+            <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead><tr style={{ borderBottom:'1.5px solid #fde68a' }}>
+                  {['วันที่','เพจ','ออเดอร์จริง','นำเข้าเมื่อ'].map((h,i)=>(
+                    <th key={i} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {backendOrders.length===0
+                    ?<tr><td colSpan={4} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีข้อมูลหลังบ้าน</td></tr>
+                    :backendOrders.slice(0,50).map((b,i)=>(
+                      <tr key={i} style={{ borderBottom:'1px solid #fef3c7' }}>
+                        <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{b.date}</td>
+                        <td style={{ padding:'10px 14px', fontSize:13.5, fontWeight:600 }}>{getPageName(b.pageId)||b.pageId}</td>
+                        <td style={{ padding:'10px 14px', fontSize:16, fontWeight:900, color:'#b45309' }}>{b.actualCount}</td>
+                        <td style={{ padding:'10px 14px', fontSize:12, color:'#9ca3af' }}>
+                          {b.importedAt?.toDate ? format(b.importedAt.toDate(),'d/M/yy HH:mm') : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ TAB: CANCELLED ══════════ */}
+      {tab==='cancelled' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {/* Add cancel form */}
+          {showCancel && (
+            <div style={{ background:'#fff1f2', border:'2px solid #fca5a5', borderRadius:16, padding:20 }}>
+              <div style={{ fontSize:15, fontWeight:900, color:'#be123c', marginBottom:14 }}>❌ บันทึกออเดอร์ยกเลิก</div>
+              <div style={{ fontSize:12.5, color:'#9f1239', marginBottom:14 }}>
+                <strong>Rule 7:</strong> ระบุวันที่ของออเดอร์นั้น → หักจากแอดมินที่อยู่เพจนั้นวันนั้น ตามสัดส่วน
+              </div>
+              {err && <div style={{ background:'#fff', border:'1.5px solid #fca5a5', borderRadius:9, padding:'8px 12px', color:'#be123c', marginBottom:12, fontSize:13 }}>❌ {err}</div>}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+                <div>
+                  <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>📄 เพจ *</label>
+                  <select style={S} value={cancelForm.pageId} onChange={setCF('pageId')}>
+                    <option value="">-- เลือกเพจ --</option>
+                    {pages.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>📅 วันที่ของออเดอร์ *</label>
+                  <input type="date" style={S} value={cancelForm.date} onChange={setCF('date')}/>
+                </div>
+                <div>
+                  <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>จำนวน (บ้าน)</label>
+                  <input type="number" min="1" style={{...S,textAlign:'center',fontWeight:800,color:'#be123c'}} value={cancelForm.qty} onChange={setCF('qty')}/>
+                </div>
+                <div>
+                  <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>ยอดหัก (฿)</label>
+                  <input type="number" min="0" step="0.01" style={{...S,textAlign:'center',fontWeight:800,color:'#be123c'}} value={cancelForm.amount} onChange={setCF('amount')}/>
+                </div>
+              </div>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>เหตุผล</label>
+                <input style={S} placeholder="เหตุผลการยกเลิก..." value={cancelForm.reason} onChange={setCF('reason')}/>
+              </div>
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={()=>setShowCancel(false)} style={{ background:'#f1f5f9', border:'1.5px solid #dde3f5', borderRadius:9, padding:'8px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
+                <button onClick={handleSaveCancel} disabled={saving} style={{ background:'linear-gradient(135deg,#e11d48,#f43f5e)', border:'none', borderRadius:9, padding:'8px 20px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit' }}>
+                  {saving?'กำลังบันทึก...':'❌ บันทึกการยกเลิก'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Cancelled list */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
+            <div style={{ background:'linear-gradient(135deg,#fff1f2,#ffe4e6)', padding:'12px 18px', borderBottom:'1.5px solid #fecdd3', fontSize:14, fontWeight:800, color:'#be123c' }}>
+              ❌ ออเดอร์ยกเลิกทั้งหมด ({cancelledOrders.length} รายการ)
+            </div>
+            <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead><tr style={{ borderBottom:'1.5px solid #fecdd3' }}>
+                  {['วันที่ของออเดอร์','เพจ','จำนวน','ยอดหัก (฿)','เหตุผล',''].map((h,i)=>(
+                    <th key={i} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {cancelledOrders.length===0
+                    ?<tr><td colSpan={6} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีรายการยกเลิก</td></tr>
+                    :cancelledOrders.map(c=>(
+                      <tr key={c.id} style={{ borderBottom:'1px solid #fff1f2' }}>
+                        <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{c.originalDate}</td>
+                        <td style={{ padding:'10px 14px', fontSize:13.5, fontWeight:600 }}>{getPageName(c.pageId)||c.pageId}</td>
+                        <td style={{ padding:'10px 14px', fontSize:14, fontWeight:800, color:'#be123c' }}>{c.qty}</td>
+                        <td style={{ padding:'10px 14px', fontSize:14, fontWeight:900, color:'#be123c' }}>฿{(c.amount||0).toLocaleString()}</td>
+                        <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{c.reason||'—'}</td>
+                        <td style={{ padding:'8px 10px' }}>
+                          {isSuperAdmin&&(
+                            <button onClick={()=>removeCancel(c.id)} style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:7, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#be123c' }}>
+                              <Trash2 size={12}/>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
