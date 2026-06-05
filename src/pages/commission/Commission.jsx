@@ -228,16 +228,20 @@ export default function Commission() {
 
   // ── tab items ─────────────────────────────────────
   // ── สรุปของฉัน ───────────────────────────────────
-  const myComm  = commissions.filter(c => c.adminId === myUid)
+  // Filter แบบ loose: รองรับทั้ง Firebase uid และ Firestore doc id
+  const myIds   = [myUid, user?.uid, profile?.id].filter(Boolean)
+  const myComm  = commissions.filter(c => myIds.includes(c.adminId))
   const myToday = myComm.filter(c => c.date === today)
   const myMonth = myComm.filter(c => c.date?.startsWith(today.slice(0,7)))
-  const myTodayTotal = myToday.reduce((a,c)=>a+(c.manualTotal||0)+(c.aiTotal||0),0)
-  const myMonthTotal = myMonth.reduce((a,c)=>a+(c.manualTotal||0)+(c.aiTotal||0),0)
-  const myTotalOrders = myToday.reduce((a,c)=>a+(c.manualOrders||0)+(c.aiOrders||0),0)
+  const calcTotal = c => (c.total) || (c.manualTotal||0)+(c.aiTotal||0) || 
+    ((c.manualOrders||0)*(c.manualRate||5))+((c.aiOrders||0)*(c.aiRate||2))
+  const myTodayTotal  = myToday.reduce((a,c)=>a+calcTotal(c),0)
+  const myMonthTotal  = myMonth.reduce((a,c)=>a+calcTotal(c),0)
+  const myTotalOrders = myToday.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0)
 
   const TABS = [
     { k:'orders',   label:'💰 ออเดอร์',      count: filtered.length },
-    { k:'mine',     label:'👤 สรุปของฉัน',   count: myComm.length },
+    { k:'mine',     label:'👤 สรุปของฉัน',   count: myMonth.length },
     { k:'analysis', label:'🧮 คำนวณค่าคอม',  count: analysis.length },
     { k:'backend',  label:'🖥️ หลังบ้าน',      count: backendOrders.filter(b=>b.date===analysisDate).length },
     { k:'cancelled',label:'❌ ยกเลิก',        count: cancelledOrders.length },
@@ -798,12 +802,18 @@ export default function Commission() {
                       <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.aiOrders||0}</td>
                       <td style={{ padding:'10px 12px', color:'#059669', fontWeight:700 }}>{c.proOrders||'—'}</td>
                       <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.saleAmount?`฿${parseFloat(c.saleAmount).toLocaleString()}`:'—'}</td>
-                      <td style={{ padding:'10px 12px', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{(c.total||(c.manualTotal||0)+(c.aiTotal||0)).toLocaleString()}</td>
+                      <td style={{ padding:'10px 12px', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{calcTotal(c).toLocaleString()}</td>
                       <td style={{ padding:'10px 12px', fontSize:12, color:'#6b7280' }}>{c.note||'—'}</td>
                     </tr>
                   ))}
                   {myComm.length===0&&(
-                    <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#9ca3af' }}>ยังไม่มีข้อมูล</td></tr>
+                    <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#9ca3af' }}>
+                      <div style={{ fontSize:20, marginBottom:8 }}>📭</div>
+                      <div style={{ fontWeight:700, color:'#6b7280', marginBottom:4 }}>ยังไม่มีข้อมูล</div>
+                      <div style={{ fontSize:12, color:'#9ca3af' }}>
+                        ลงข้อมูลค่าคอมในแท็บ "💰 ออเดอร์" แล้วกลับมาดูที่นี่
+                      </div>
+                    </td></tr>
                   )}
                 </tbody>
               </table>
