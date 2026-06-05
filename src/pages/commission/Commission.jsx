@@ -14,7 +14,9 @@ const thisMonth = format(new Date(), 'yyyy-MM')
 const S = { width:'100%', background:'#fff', border:'1.5px solid #dde3f5', borderRadius:10, color:'#1e1b4b', fontFamily:'inherit', fontSize:14, padding:'9px 12px', outline:'none' }
 
 export default function Commission() {
-  const { profile, user, canEdit, isAdmin, isSuperAdmin } = useAuth()
+  const { profile, user, canEdit, isAdmin, isSuperAdmin, canManage, canAudit } = useAuth()
+  // สิทธิ์มองเห็นข้อมูลทั้งหมด: superadmin, head_admin, assistant, auditor
+  const canSeeAll = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
   const {
     commissions, pages, users, commRates,
     createCommission, editCommission, removeCommission,
@@ -69,7 +71,8 @@ export default function Commission() {
 
   // ── filtered commissions ──────────────────────────
   const filtered = useMemo(() => {
-    let d = isAdmin ? commissions.filter(c => c.adminId === myUid) : [...commissions]
+    // admin เห็นเฉพาะของตัวเอง, role อื่น เห็นทั้งหมด
+    let d = isAdmin && !canSeeAll ? commissions.filter(c => myIds.includes(c.adminId)) : [...commissions]
     if (filters.date && !filters.month) d = d.filter(c => c.date === filters.date)
     if (filters.month) d = d.filter(c => c.date?.startsWith(filters.month))
     if (filters.adminId) d = d.filter(c => c.adminId === filters.adminId)
@@ -286,12 +289,12 @@ export default function Commission() {
   const myTotalOrders = myToday.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0)
 
   const TABS = [
-    { k:'orders',   label:'💰 ออเดอร์',      count: filtered.length },
-    { k:'mine',     label:'👤 สรุปของฉัน',   count: myMonth.length },
-    { k:'analysis', label:'🧮 คำนวณค่าคอม',  count: analysis.length },
-    { k:'backend',  label:'🖥️ หลังบ้าน',      count: backendOrders.filter(b=>b.date===analysisDate).length },
-    { k:'cancelled',label:'❌ ยกเลิก',        count: cancelledOrders.length },
-  ]
+    { k:'orders',   label:'💰 ออเดอร์',      count: filtered.length,  show: true },
+    { k:'mine',     label:'👤 สรุปของฉัน',   count: myMonth.length,   show: true }, // ทุกคนดูข้อมูลตัวเองได้
+    { k:'analysis', label:'🧮 คำนวณค่าคอม',  count: analysis.length,  show: canSeeAll || isAdmin },
+    { k:'backend',  label:'🖥️ หลังบ้าน',      count: backendOrders.filter(b=>b.date===analysisDate).length, show: canSeeAll },
+    { k:'cancelled',label:'❌ ยกเลิก',        count: cancelledOrders.length, show: canSeeAll || isAdmin },
+  ].filter(t => t.show)
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
