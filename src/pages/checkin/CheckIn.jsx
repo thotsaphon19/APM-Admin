@@ -48,7 +48,8 @@ function fmtMonthTH(ym) {
 
 // ── Component ────────────────────────────────────────
 export default function CheckIn() {
-  const { profile, user } = useAuth()
+  const { profile, user, isSuperAdmin, canManage, canAudit } = useAuth()
+  const canSeeAll2 = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
   const { pages, checkins, users, doCheckin, doCheckout, getUserName } = useData()
   const { notifyCustom } = useNotify()
 
@@ -136,9 +137,12 @@ export default function CheckIn() {
   // ── Summary: per-admin stats ──────────────────────
   const summaryData = useMemo(() => {
     const admins = users.filter(u => ['admin','head_admin'].includes(u.role))
+    // canSeeAll2: เห็นทุกคน, admin: เห็นเฉพาะตัวเอง
+    const allCheck = canSeeAll2 ? checkins
+      : checkins.filter(c => [myUid, profile?.id, user?.uid].filter(Boolean).includes(c.userId))
     const base   = summaryMode === 'day'
-      ? checkins.filter(c => c.date === histDate)
-      : checkins.filter(c => c.date?.startsWith(histMonth))
+      ? allCheck.filter(c => c.date === histDate)
+      : allCheck.filter(c => c.date?.startsWith(histMonth))
 
     return admins.map(u => {
       const myC = base.filter(c => c.userId === u.id)
@@ -171,11 +175,11 @@ export default function CheckIn() {
 
   const S = { background:'#fff', border:'1.5px solid #dde3f5', borderRadius:10, color:'#1e1b4b', fontFamily:'inherit', fontSize:13.5, padding:'9px 12px', outline:'none', width:'100%' }
   const TABS = [
-    { k:'checkin',  label:'🏁 เช็คอิน/เอาท์' },
-    { k:'live',     label:`🟢 Live (${liveToday.length})` },
-    { k:'history',  label:'📜 ประวัติ' },
-    { k:'summary',  label:'📊 สรุป' },
-  ]
+    { k:'checkin',  label:'🏁 เช็คอิน/เอาท์', show: !canSeeAll2 || isAdmin }, // admin เช็คอินเองได้
+    { k:'live',     label:`🟢 Live (${liveToday.length})`, show: true },        // ทุกคนเห็น realtime
+    { k:'history',  label:'📜 ประวัติ',         show: true },                   // ทุกคนเห็น
+    { k:'summary',  label:'📊 สรุป',            show: true },                   // ทุกคนเห็น
+  ].filter(t => t.show)
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
