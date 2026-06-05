@@ -1098,12 +1098,20 @@ export default function Commission() {
             </div>
             {/* ── สรุปรวมตามเพจ+วันที่ (หลายคนต่อเพจ) ── */}
             {(() => {
-              const grouped = {}
+              // ── Primary source: commissions (ไม่ต้องมีไฟล์ backend) ──
+              const commGrouped = {}
+              commissions.forEach(c => {
+                if (!c.date || !c.pageId) return
+                const key = `${c.date}__${c.pageId}`
+                if (!commGrouped[key]) commGrouped[key] = { date:c.date, pageId:c.pageId, actualTotal:0, count:0 }
+                commGrouped[key].count += 1
+              })
+              // รวม backend ถ้ามี
+              const grouped = { ...commGrouped }
               backendOrders.forEach(b => {
                 const key = `${b.date}__${b.pageId}`
                 if (!grouped[key]) grouped[key] = { date:b.date, pageId:b.pageId, actualTotal:0, count:0 }
                 grouped[key].actualTotal += (b.actualCount||0)
-                grouped[key].count += 1
               })
 
               const enriched = Object.values(grouped).map(g => {
@@ -1126,16 +1134,47 @@ export default function Commission() {
                 const totalComm = adminsDetail.reduce((a,d)=>a+d.comm,0)
                 const avgComm   = adminsDetail.length>0 ? Math.round(totalComm/adminsDetail.length) : 0
                 return { ...g, adminsDetail, adminTotalOrders, totalComm, avgComm }
-              }).filter(g=>g.count>1)  // แสดงเฉพาะเพจที่มีหลายคน
+              })
 
-              if (!enriched.length) return null
+              // กรองตามวันที่ถ้าระบุ
+              const filteredEnriched = analysisDate
+                ? enriched.filter(g => g.date === analysisDate)
+                : enriched.sort((a,b) => b.date?.localeCompare(a.date||''))
+
+              if (!filteredEnriched.length) return (
+                <div style={{ padding:'24px', textAlign:'center', color:'#9ca3af' }}>
+                  <div style={{ fontSize:20, marginBottom:8 }}>📭</div>
+                  <div style={{ fontWeight:700 }}>ยังไม่มีข้อมูล</div>
+                  <div style={{ fontSize:12.5, marginTop:4 }}>ลงข้อมูลค่าคอมก่อน หรือเลือกวันที่อื่น</div>
+                </div>
+              )
+              // use filteredEnriched instead of enriched below
               return (
                 <div style={{ padding:'16px', borderBottom:'1.5px solid #fde68a', background:'linear-gradient(135deg,#fffbeb55,#fff)', display:'flex', flexDirection:'column', gap:14 }}>
-                  <div style={{ fontSize:14, fontWeight:900, color:'#b45309', display:'flex', alignItems:'center', gap:8 }}>
-                    👥 สรุปรวมเพจที่มีหลายคนลง
-                    <span style={{ background:'#fde68a', color:'#92400e', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:800 }}>{enriched.length} เพจ</span>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+                    <div style={{ fontSize:14, fontWeight:900, color:'#b45309', display:'flex', alignItems:'center', gap:8 }}>
+                      📊 สรุปค่าคอมตามเพจ
+                      <span style={{ background:'#fde68a', color:'#92400e', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:800 }}>
+                        {(filteredEnriched||enriched).length} เพจ
+                      </span>
+                      {backendOrders.length===0 && (
+                        <span style={{ background:'#eef2ff', color:'#4338ca', border:'1px solid #c7d2fe', borderRadius:99, padding:'2px 9px', fontSize:11, fontWeight:700 }}>
+                          📊 จากระบบ (ยังไม่มี Backend)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:12, color:'#6b7280' }}>กรองวันที่:</span>
+                      <select value={analysisDate} onChange={e=>setFilters(p=>({...p,date:e.target.value}))}
+                        style={{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #fde68a', background:'#fff', fontSize:12.5, color:'#92400e', fontFamily:'inherit' }}>
+                        {[...new Set(commissions.map(c=>c.date))].sort().reverse().slice(0,30).map(d=>(
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                        <option value="">ทุกวัน</option>
+                      </select>
+                    </div>
                   </div>
-                  {enriched.map((g,gi)=>(
+                  {(filteredEnriched||enriched).map((g,gi)=>(
                     <div key={gi} style={{ background:'#fff', border:'2px solid #fde68a', borderRadius:14, overflow:'hidden' }}>
                       {/* Page header */}
                       <div style={{ background:'linear-gradient(135deg,#fef3c7,#fffbeb)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
