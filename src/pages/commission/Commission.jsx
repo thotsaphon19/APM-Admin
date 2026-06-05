@@ -44,9 +44,10 @@ export default function Commission() {
     manualOrders:'', manualRate: commRates.manualRate ?? 5,
     aiOrders:'',     aiRate:     commRates.aiRate     ?? 2,
     cancelOrders:'', unclearOrders:'',
-    // night shift cross-midnight fields
     isNightSplit:false,
     manualBefore:'', aiBefore:'', manualAfter:'', aiAfter:'',
+    proOrders:'',    // ออเดอร์โปร (ไม่นับในยอดรวม)
+    saleAmount:'',   // ยอดขาย (แสดงเฉพาะเจ้าของ)
     note:'',
   })
   const [form, setForm] = useState(makeBlank)
@@ -226,8 +227,17 @@ export default function Commission() {
   const close    = () => { setShowForm(false); setEditItem(null); setErr('') }
 
   // ── tab items ─────────────────────────────────────
+  // ── สรุปของฉัน ───────────────────────────────────
+  const myComm  = commissions.filter(c => c.adminId === myUid)
+  const myToday = myComm.filter(c => c.date === today)
+  const myMonth = myComm.filter(c => c.date?.startsWith(today.slice(0,7)))
+  const myTodayTotal = myToday.reduce((a,c)=>a+(c.manualTotal||0)+(c.aiTotal||0),0)
+  const myMonthTotal = myMonth.reduce((a,c)=>a+(c.manualTotal||0)+(c.aiTotal||0),0)
+  const myTotalOrders = myToday.reduce((a,c)=>a+(c.manualOrders||0)+(c.aiOrders||0),0)
+
   const TABS = [
     { k:'orders',   label:'💰 ออเดอร์',      count: filtered.length },
+    { k:'mine',     label:'👤 สรุปของฉัน',   count: myComm.length },
     { k:'analysis', label:'🧮 คำนวณค่าคอม',  count: analysis.length },
     { k:'backend',  label:'🖥️ หลังบ้าน',      count: backendOrders.filter(b=>b.date===analysisDate).length },
     { k:'cancelled',label:'❌ ยกเลิก',        count: cancelledOrders.length },
@@ -490,6 +500,23 @@ export default function Commission() {
                 </>
               )}
 
+              {/* ── โปร + ยอดขาย ── */}
+              <div style={{ background:'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:12, padding:'14px 16px', marginBottom:18 }}>
+                <div style={{ fontSize:12, fontWeight:800, color:'#059669', marginBottom:10 }}>
+                  📊 ข้อมูลเสริม — แสดงเฉพาะคุณ ไม่นับในยอดรวมทีม
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <div>
+                    <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#059669', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🎯 ออเดอร์โปร (บ้าน)</label>
+                    <input type="number" style={{...S}} value={form.proOrders||''} onChange={setF('proOrders')} placeholder="0" min="0"/>
+                  </div>
+                  <div>
+                    <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#059669', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>💵 ยอดขาย (฿)</label>
+                    <input type="number" style={{...S}} value={form.saleAmount||''} onChange={setF('saleAmount')} placeholder="0" min="0"/>
+                  </div>
+                </div>
+              </div>
+
               <div style={{ marginBottom:18 }}>
                 <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📝 หมายเหตุ</label>
                 <textarea style={{...S,minHeight:60,resize:'vertical'}} placeholder="หมายเหตุ..." value={form.note} onChange={setF('note')}/>
@@ -719,7 +746,73 @@ export default function Commission() {
       )}
 
       {/* ══════════ TAB: BACKEND ══════════ */}
-      {tab==='backend' && (
+      
+      {/* ══ TAB: สรุปของฉัน ══════════════════════════════════════ */}
+      {tab === 'mine' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* KPI ของฉัน */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 }}>
+            {[
+              { e:'💎', l:'ค่าคอมวันนี้',   v:`฿${myTodayTotal.toLocaleString()}`, c:'#4338ca', bg:'linear-gradient(135deg,#eef2ff,#e0e7ff)', b:'#c7d2fe' },
+              { e:'📦', l:'ออเดอร์วันนี้',   v:myTotalOrders, c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
+              { e:'📅', l:'ค่าคอมเดือนนี้',  v:`฿${myMonthTotal.toLocaleString()}`, c:'#7c3aed', bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', b:'#ddd6fe' },
+              { e:'📋', l:'ลงข้อมูลเดือนนี้', v:`${myMonth.length} ครั้ง`, c:'#b45309', bg:'linear-gradient(135deg,#fffbeb,#fef3c7)', b:'#fde68a' },
+              { e:'🎯', l:'ออเดอร์โปร',      v:myComm.reduce((a,c)=>a+(parseInt(c.proOrders)||0),0), c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
+              { e:'💵', l:'ยอดขายรวม',       v:`฿${myComm.filter(c=>c.adminId===myUid).reduce((a,c)=>a+(parseFloat(c.saleAmount)||0),0).toLocaleString()}`, c:'#0f766e', bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', b:'#99f6e4' },
+            ].map((k,i)=>(
+              <div key={i} style={{ background:k.bg, border:`1.5px solid ${k.b}`, borderRadius:14, padding:'14px 16px' }}>
+                <div style={{ fontSize:22, marginBottom:6 }}>{k.e}</div>
+                <div style={{ fontSize:20, fontWeight:900, color:k.c }}>{k.v}</div>
+                <div style={{ fontSize:11.5, color:'#6b7280', marginTop:4, fontWeight:600 }}>{k.l}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ตารางรายการของฉัน */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
+            <div style={{ padding:'14px 18px', borderBottom:'1px solid #f0f4ff', display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(135deg,#f5f3ff,#eef2ff)' }}>
+              <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b' }}>👤 รายการของฉัน</div>
+              <div style={{ fontSize:12.5, color:'#6b7280' }}>{myComm.length} รายการทั้งหมด</div>
+            </div>
+            <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
+                <thead style={{ position:'sticky', top:0 }}>
+                  <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderBottom:'2px solid #e0e7ff' }}>
+                    {['📅 วันที่','📄 เพจ','🌅 กะ','🖐 มือ','🤖 AI','🎯 โปร','💵 ยอดขาย','💎 รวม','📝 หมายเหตุ'].map((h,i)=>(
+                      <th key={i} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {myComm.slice().sort((a,b)=>b.date?.localeCompare(a.date||'')).map((c,i)=>(
+                    <tr key={c.id||i} style={{ borderBottom:'1px solid #f0f4ff' }}>
+                      <td style={{ padding:'10px 12px', fontWeight:700, color:'#1e1b4b', whiteSpace:'nowrap' }}>{c.date}</td>
+                      <td style={{ padding:'10px 12px', color:'#4338ca', fontWeight:600 }}>{getPageName(c.pageId)}</td>
+                      <td style={{ padding:'10px 12px' }}>
+                        <span style={{ background:c.shift==='night'?'#eef2ff':'#fffbeb', color:c.shift==='night'?'#4338ca':'#b45309', border:`1px solid ${c.shift==='night'?'#c7d2fe':'#fde68a'}`, borderRadius:99, padding:'2px 8px', fontSize:11.5, fontWeight:700 }}>
+                          {c.shift==='night'?'🌙 ดึก':'☀️ กลางวัน'}
+                        </span>
+                      </td>
+                      <td style={{ padding:'10px 12px', color:'#7c3aed', fontWeight:700 }}>{c.manualOrders||0}</td>
+                      <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.aiOrders||0}</td>
+                      <td style={{ padding:'10px 12px', color:'#059669', fontWeight:700 }}>{c.proOrders||'—'}</td>
+                      <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.saleAmount?`฿${parseFloat(c.saleAmount).toLocaleString()}`:'—'}</td>
+                      <td style={{ padding:'10px 12px', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{(c.total||(c.manualTotal||0)+(c.aiTotal||0)).toLocaleString()}</td>
+                      <td style={{ padding:'10px 12px', fontSize:12, color:'#6b7280' }}>{c.note||'—'}</td>
+                    </tr>
+                  ))}
+                  {myComm.length===0&&(
+                    <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#9ca3af' }}>ยังไม่มีข้อมูล</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+{tab==='backend' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           {/* Import form */}
           {showBackend && (
@@ -765,6 +858,35 @@ export default function Commission() {
             <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', fontSize:14, fontWeight:800, color:'#b45309' }}>
               🖥️ ออเดอร์จริงจากหลังบ้าน ({backendOrders.length} รายการ)
             </div>
+            {/* ── สรุปรวมตามเพจ+วันที่ (3 คนลงเพจเดียวกัน) ── */}
+            {(() => {
+              const grouped = {}
+              backendOrders.forEach(b => {
+                const key = `${b.date}__${b.pageId}`
+                if (!grouped[key]) grouped[key] = { date:b.date, pageId:b.pageId, total:0, count:0 }
+                grouped[key].total += (b.actualOrders||b.manualOrders||0)
+                grouped[key].count += 1
+              })
+              const multiPage = Object.values(grouped).filter(g=>g.count>1)
+              if (!multiPage.length) return null
+              return (
+                <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'2px solid #fde68a', borderRadius:12, padding:'14px 18px', marginBottom:8 }}>
+                  <div style={{ fontSize:13.5, fontWeight:900, color:'#b45309', marginBottom:10 }}>👥 เพจที่มีหลายคนลง — สรุปรวม</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
+                    {multiPage.map((g,i)=>(
+                      <div key={i} style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:10, padding:'10px 16px', display:'flex', gap:12, alignItems:'center' }}>
+                        <div>
+                          <div style={{ fontSize:12.5, fontWeight:800, color:'#1e1b4b' }}>{getPageName(g.pageId)}</div>
+                          <div style={{ fontSize:11.5, color:'#6b7280' }}>{g.date} · {g.count} คนลง</div>
+                        </div>
+                        <div style={{ fontSize:22, fontWeight:900, color:'#b45309' }}>{g.total}</div>
+                        <div style={{ fontSize:11, color:'#6b7280' }}>ออเดอร์รวม</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
             <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead><tr style={{ borderBottom:'1.5px solid #fde68a' }}>
