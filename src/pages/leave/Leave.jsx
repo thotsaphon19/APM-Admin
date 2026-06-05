@@ -39,7 +39,9 @@ function getLT(v) {
 }
 
 export default function Leave() {
-  const { profile, canManage, isSuperAdmin } = useAuth()
+  const { profile, canManage, isSuperAdmin, canAudit } = useAuth()
+  // superadmin, head_admin, assistant, auditor เห็นทุกคน
+  const canSeeAllLeave = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
   const { leaves, users, createLeave, approveLeave, rejectLeave, removeLeave, getUserName } = useData()
   const { notifyLeaveRequest, notifyLeaveResult } = useNotify()
 
@@ -62,7 +64,8 @@ export default function Leave() {
   // ── filtered ──────────────────────────────────────
   const filtered = useMemo(() => {
     let d = [...leaves].filter(l => !l.deleted)
-    if (isAdmin)     d = d.filter(l => l.employeeId === myUid)
+    // role 'admin' เห็นเฉพาะของตัวเอง, role อื่น (head, super, assistant, auditor) เห็นทุกคน
+    if (isAdmin && !canSeeAllLeave) d = d.filter(l => l.employeeId === myUid)
     if (filterStatus) d = d.filter(l => l.status === filterStatus)
     if (filterUser)   d = d.filter(l => l.employeeId === filterUser)
     if (filterMonth)  d = d.filter(l => l.startDate?.startsWith(filterMonth))
@@ -131,7 +134,7 @@ export default function Leave() {
                 : `ทีมรออนุมัติ ${stats.pending} รายการ · อนุมัติแล้ว ${stats.approved} รายการ`}
             </div>
           </div>
-          {(isAdmin || canManage) && (
+          {(isAdmin || canManage || profile?.role === 'assistant') && (
             <button onClick={() => setShowForm(true)}
               style={{ background:'rgba(255,255,255,.2)', border:'1.5px solid rgba(255,255,255,.35)', borderRadius:12, padding:'10px 20px', cursor:'pointer', fontSize:14, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7, backdropFilter:'blur(8px)' }}>
               <Plus size={15}/> + ขอลา
