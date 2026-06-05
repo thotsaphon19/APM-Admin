@@ -40,6 +40,11 @@ export default function Commission() {
   const [tab,        setTab]        = useState('orders') // orders | backend | cancelled | analysis
   const [filters,    setFilters]    = useState({ date:today, month:'', adminId:'', pageId:'' })
   const [search,     setSearch]     = useState('')
+  // ── Summary state ──────────────────────────────
+  const [sumMode,    setSumMode]    = useState('month') // day|week|month|year
+  const [sumDate,    setSumDate]    = useState(today)
+  const [sumMonth,   setSumMonth]   = useState(today.slice(0,7))
+  const [sumYear,    setSumYear]    = useState(today.slice(0,4))
 
   const makeBlank = () => ({
     date:today, adminId: isAdmin ? myUid : '',
@@ -292,10 +297,80 @@ export default function Commission() {
     { k:'orders',    label:'💰 ออเดอร์',      count: filtered.length },
     { k:'mine',      label:'👤 สรุปของฉัน',   count: myMonth.length },
     { k:'analysis',  label:'🧮 คำนวณค่าคอม',  count: analysis.length },
-    // หลังบ้าน: เฉพาะ superadmin, head_admin, assistant, auditor
+    { k:'summary',   label:'📊 สรุปรายงาน',   count: null },
     ...(canSeeAll ? [{ k:'backend', label:'🖥️ หลังบ้าน', count: backendOrders.filter(b=>b.date===analysisDate).length }] : []),
     { k:'cancelled', label:'❌ ยกเลิก',        count: cancelledOrders.length },
   ]
+
+  // ── Summary computation ──────────────────────────
+  const summaryData = useMemo(() => {
+    // กรองตาม mode
+    let base = canSeeAll ? commissions : commissions.filter(c => myIds.includes(c.adminId))
+
+    if (sumMode === 'day') {
+      base = base.filter(c => c.date === sumDate)
+    } else if (sumMode === 'week') {
+      // หา start/end of week (Mon-Sun)
+      const d = new Date(sumDate)
+      const day = d.getDay()
+      const mon = new Date(d); mon.setDate(d.getDate() - (day===0?6:day-1))
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+      const monStr = mon.toISOString().slice(0,10)
+      const sunStr = sun.toISOString().slice(0,10)
+      base = base.filter(c => c.date >= monStr && c.date <= sunStr)
+    } else if (sumMode === 'month') {
+      base = base.filter(c => c.date?.startsWith(sumMonth))
+    } else if (sumMode === 'year') {
+      base = base.filter(c => c.date?.startsWith(sumYear))
+    }
+
+    // สรุปรายแอดมิน
+    const adminMap = {}
+    base.forEach(c => {
+      const uid = c.adminId
+      if (!adminMap[uid]) adminMap[uid] = {
+        adminId:uid, manual:0, ai:0, orders:0,
+        proOrders:0, saleAmount:0, total:0, days:new Set(), pages:new Set()
+      }
+      const r = adminMap[uid]
+      const m = parseInt(c.manualOrders)||0
+      const a = parseInt(c.aiOrders)||0
+      const mr= c.manualRate||commRates.manualRate||5
+      const ar= c.aiRate||commRates.aiRate||2
+      const comm = c.total||(c.manualTotal||0)+(c.aiTotal||0)||(m*mr+a*ar)
+      r.manual += m; r.ai += a; r.orders += m+a
+      r.total  += comm
+      r.proOrders   += parseInt(c.proOrders)||0
+      r.saleAmount  += parseFloat(c.saleAmount)||0
+      if (c.date)   r.days.add(c.date)
+      if (c.pageId) r.pages.add(c.pageId)
+    })
+
+    const rows = Object.values(adminMap).map(r=>({
+      ...r, days: r.days.size, pages: r.pages.size,
+    })).sort((a,b)=>b.total-a.total)
+
+    // สรุปรายวัน (สำหรับ chart)
+    const byDate = {}
+    base.forEach(c => {
+      if (!byDate[c.date]) byDate[c.date] = { date:c.date, orders:0, total:0 }
+      byDate[c.date].orders += (parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0)
+      byDate[c.date].total  += c.total||(c.manualTotal||0)+(c.aiTotal||0)||
+        ((parseInt(c.manualOrders)||0)*(c.manualRate||5)+(parseInt(c.aiOrders)||0)*(c.aiRate||2))
+    })
+    const byDateArr = Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date))
+
+    // สรุปรวม
+    const grand = rows.reduce((a,r)=>({
+      manual:  a.manual+r.manual,
+      ai:      a.ai+r.ai,
+      orders:  a.orders+r.orders,
+      total:   a.total+r.total,
+      saleAmount: a.saleAmount+(r.saleAmount||0),
+    }),{manual:0,ai:0,orders:0,total:0,saleAmount:0})
+
+    return { rows, grand, byDateArr, count: base.length }
+  }, [commissions, sumMode, sumDate, sumMonth, sumYear, myIds, canSeeAll, commRates])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -872,7 +947,163 @@ export default function Commission() {
         </div>
       )}
 
-{tab==='backend' && (
+
+      {/* ══ TAB: สรุปรายงาน ══ */}
+      {tab === 'summary' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* Period Selector */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, padding:'16px 20px' }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:12, alignItems:'flex-end' }}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>ช่วงเวลา</div>
+                <div style={{ display:'flex', gap:6 }}>
+                  {[{v:'day',l:'📅 รายวัน'},{v:'week',l:'📆 สัปดาห์'},{v:'month',l:'🗓️ รายเดือน'},{v:'year',l:'📊 รายปี'}].map(m=>(
+                    <button key={m.v} onClick={()=>setSumMode(m.v)}
+                      style={{ background:sumMode===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${sumMode===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:9, padding:'7px 12px', cursor:'pointer', fontSize:12, fontWeight:700, color:sumMode===m.v?'#fff':'#6b7280', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                      {m.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {sumMode==='day' && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>วันที่</div>
+                  <input type="date" value={sumDate} onChange={e=>setSumDate(e.target.value)}
+                    style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                </div>
+              )}
+              {sumMode==='week' && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>เลือกวันในสัปดาห์</div>
+                  <input type="date" value={sumDate} onChange={e=>setSumDate(e.target.value)}
+                    style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                  <div style={{ fontSize:11, color:'#9ca3af', marginTop:4 }}>ระบบแสดงข้อมูลทั้งสัปดาห์ที่วันนี้อยู่</div>
+                </div>
+              )}
+              {sumMode==='month' && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>เดือน</div>
+                  <input type="month" value={sumMonth} onChange={e=>setSumMonth(e.target.value)}
+                    style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                </div>
+              )}
+              {sumMode==='year' && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>ปี</div>
+                  <select value={sumYear} onChange={e=>setSumYear(e.target.value)}
+                    style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}>
+                    {Array.from({length:5},(_,i)=>String(new Date().getFullYear()-i)).map(y=>(
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Grand KPIs */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))', gap:12 }}>
+            {[
+              { e:'💰', l:'ค่าคอมรวม',   v:`฿${Math.round(summaryData.grand.total).toLocaleString()}`, c:'#4338ca', bg:'linear-gradient(135deg,#eef2ff,#e0e7ff)', b:'#c7d2fe' },
+              { e:'📦', l:'ออเดอร์รวม', v:summaryData.grand.orders.toLocaleString(), c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
+              { e:'🖐',  l:'ตอบมือ',    v:summaryData.grand.manual.toLocaleString(), c:'#7c3aed', bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', b:'#ddd6fe' },
+              { e:'🤖', l:'AI',         v:summaryData.grand.ai.toLocaleString(),     c:'#0f766e', bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', b:'#99f6e4' },
+              { e:'👥', l:'แอดมิน',     v:`${summaryData.rows.length} คน`,          c:'#b45309', bg:'linear-gradient(135deg,#fffbeb,#fef3c7)', b:'#fde68a' },
+              { e:'📋', l:'รายการ',     v:`${summaryData.count} รายการ`,            c:'#6b7280', bg:'linear-gradient(135deg,#f9fafb,#f3f4f6)', b:'#e5e7eb' },
+            ].map((k,i)=>(
+              <div key={i} style={{ background:k.bg, border:`1.5px solid ${k.b}`, borderRadius:14, padding:'13px 16px' }}>
+                <div style={{ fontSize:20, marginBottom:5 }}>{k.e}</div>
+                <div style={{ fontSize:19, fontWeight:900, color:k.c }}>{k.v}</div>
+                <div style={{ fontSize:11.5, color:'#6b7280', marginTop:4, fontWeight:600 }}>{k.l}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Chart */}
+          {summaryData.byDateArr.length > 1 && (
+            <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, padding:'16px 20px' }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#1e1b4b', marginBottom:14 }}>📈 แนวโน้มค่าคอม</div>
+              <div style={{ display:'flex', gap:3, alignItems:'flex-end', overflowX:'auto', paddingBottom:6, minHeight:80 }}>
+                {summaryData.byDateArr.map((d,i)=>{
+                  const max = Math.max(...summaryData.byDateArr.map(x=>x.total),1)
+                  const pct = Math.round(d.total/max*100)
+                  return (
+                    <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flex:1, minWidth:28 }}>
+                      <div style={{ fontSize:9.5, color:'#4338ca', fontWeight:700, whiteSpace:'nowrap' }}>
+                        ฿{d.total>=1000?`${(d.total/1000).toFixed(1)}k`:Math.round(d.total)}
+                      </div>
+                      <div style={{ width:'100%', background:'linear-gradient(180deg,#6366f1,#7c3aed)', borderRadius:'3px 3px 0 0', height:Math.max(6,pct)+'px' }}/>
+                      <div style={{ fontSize:9, color:'#9ca3af', textAlign:'center' }}>{d.date.slice(5)}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Per-admin table */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
+            <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', padding:'13px 18px', borderBottom:'1.5px solid #e0e7ff', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#1e1b4b' }}>👥 สรุปรายแอดมิน</div>
+              <div style={{ fontSize:12.5, color:'#6b7280' }}>{summaryData.rows.length} คน</div>
+            </div>
+            {summaryData.rows.length===0 ? (
+              <div style={{ padding:'40px', textAlign:'center', color:'#9ca3af' }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+                <div style={{ fontWeight:700 }}>ไม่มีข้อมูลในช่วงนี้</div>
+              </div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:720 }}>
+                  <thead style={{ position:'sticky', top:0 }}>
+                    <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderBottom:'2px solid #e0e7ff' }}>
+                      {['#','แอดมิน','วัน','เพจ','🖐 มือ','🤖 AI','📦 รวม','💰 ค่าคอม','เฉลี่ย/วัน'].map((h,hi)=>(
+                        <th key={hi} style={{ padding:'10px 12px', textAlign:hi<=1?'left':'right', fontSize:11, fontWeight:800, color:'#6366f1', whiteSpace:'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryData.rows.map((r,i)=>(
+                      <tr key={r.adminId} style={{ borderBottom:'1px solid #f0f4ff', background:i%2===0?'#fff':'#fafbff' }}>
+                        <td style={{ padding:'10px 12px', fontSize:14 }}>{['🥇','🥈','🥉'][i]||i+1}</td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <div style={{ width:30, height:30, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
+                              {getUserName(r.adminId).slice(0,2)}
+                            </div>
+                            <span style={{ fontSize:13.5, fontWeight:700 }}>{getUserName(r.adminId)}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', color:'#6b7280', fontSize:13 }}>{r.days}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', color:'#6b7280', fontSize:13 }}>{r.pages}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#7c3aed' }}>{r.manual.toLocaleString()}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#0f766e' }}>{r.ai.toLocaleString()}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:800, color:'#1e1b4b' }}>{r.orders.toLocaleString()}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{Math.round(r.total).toLocaleString()}</td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:700, color:'#059669' }}>฿{r.days>0?Math.round(r.total/r.days).toLocaleString():'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderTop:'2px solid #c7d2fe' }}>
+                      <td colSpan={4} style={{ padding:'10px 12px', fontSize:13, fontWeight:900, color:'#4338ca' }}>∑ รวม</td>
+                      <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#7c3aed' }}>{summaryData.grand.manual.toLocaleString()}</td>
+                      <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#0f766e' }}>{summaryData.grand.ai.toLocaleString()}</td>
+                      <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>{summaryData.grand.orders.toLocaleString()}</td>
+                      <td style={{ padding:'10px 12px', textAlign:'right', fontSize:16, fontWeight:900, color:'#4338ca' }}>฿{Math.round(summaryData.grand.total).toLocaleString()}</td>
+                      <td/>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {tab==='backend' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
           {/* ── ส่วนบน: Import + เลือกวันที่ ── */}
