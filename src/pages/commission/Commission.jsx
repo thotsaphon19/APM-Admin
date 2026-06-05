@@ -16,7 +16,7 @@ const S = { width:'100%', background:'#fff', border:'1.5px solid #dde3f5', borde
 export default function Commission() {
   const { profile, user, canEdit, isAdmin, isSuperAdmin, canManage, canAudit } = useAuth()
   // สิทธิ์มองเห็นข้อมูลทั้งหมด: superadmin, head_admin, assistant, auditor
-  const canSeeAll = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
+  const canSeeAll = !!(isSuperAdmin || canManage || canAudit || profile?.role === 'assistant')
   const {
     commissions, pages, users, commRates,
     createCommission, editCommission, removeCommission,
@@ -26,7 +26,8 @@ export default function Commission() {
   } = useData()
   const { notifyCommission } = useNotify()
 
-  const myUid = user?.uid || profile?.id || ''
+  const myUid  = user?.uid || profile?.id || ''
+  const myIds  = [user?.uid, profile?.id].filter(Boolean)
 
   // ── form state ────────────────────────────────────
   const [showForm,   setShowForm]   = useState(false)
@@ -278,7 +279,6 @@ export default function Commission() {
   // ── tab items ─────────────────────────────────────
   // ── สรุปของฉัน ───────────────────────────────────
   // Filter แบบ loose: รองรับทั้ง Firebase uid และ Firestore doc id
-  const myIds   = [myUid, user?.uid, profile?.id].filter(Boolean)
   const myComm  = commissions.filter(c => myIds.includes(c.adminId))
   const myToday = myComm.filter(c => c.date === today)
   const myMonth = myComm.filter(c => c.date?.startsWith(today.slice(0,7)))
@@ -289,12 +289,13 @@ export default function Commission() {
   const myTotalOrders = myToday.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0)
 
   const TABS = [
-    { k:'orders',   label:'💰 ออเดอร์',      count: filtered.length,  show: true },
-    { k:'mine',     label:'👤 สรุปของฉัน',   count: myMonth.length,   show: true }, // ทุกคนดูข้อมูลตัวเองได้
-    { k:'analysis', label:'🧮 คำนวณค่าคอม',  count: analysis.length,  show: canSeeAll || isAdmin },
-    { k:'backend',  label:'🖥️ หลังบ้าน',      count: backendOrders.filter(b=>b.date===analysisDate).length, show: canSeeAll },
-    { k:'cancelled',label:'❌ ยกเลิก',        count: cancelledOrders.length, show: canSeeAll || isAdmin },
-  ].filter(t => t.show)
+    { k:'orders',    label:'💰 ออเดอร์',      count: filtered.length },
+    { k:'mine',      label:'👤 สรุปของฉัน',   count: myMonth.length },
+    { k:'analysis',  label:'🧮 คำนวณค่าคอม',  count: analysis.length },
+    // หลังบ้าน: เฉพาะ superadmin, head_admin, assistant, auditor
+    ...(canSeeAll ? [{ k:'backend', label:'🖥️ หลังบ้าน', count: backendOrders.filter(b=>b.date===analysisDate).length }] : []),
+    { k:'cancelled', label:'❌ ยกเลิก',        count: cancelledOrders.length },
+  ]
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
