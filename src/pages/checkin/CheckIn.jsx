@@ -8,12 +8,16 @@ import { LogIn, LogOut, Sun, Moon, Clock, Users, CheckCircle2, History, BarChart
 
 const todayStr   = format(new Date(), 'yyyy-MM-dd')
 const nowHour    = new Date().getHours()
-const defaultShift = nowHour >= 8 && nowHour < 20 ? 'day' : 'night'
+const nowMin     = new Date().getMinutes()
+const nowTotal   = nowHour * 60 + nowMin  // นาทีตั้งแต่ 00:00
+
+// กะกลางวัน 06:00–20:00 (360–1200), กะกลางคืน 20:00–06:00
+const defaultShift = (nowTotal >= 360 && nowTotal < 1200) ? 'day' : 'night'
 
 // ── กะ ──────────────────────────────────────────────
 const SHIFTS = {
-  day:   { label:'☀️ กะกลางวัน',  short:'กลางวัน',  range:'08:00–20:00', color:'#d97706', bg:'#fffbeb', border:'#fde68a', dark:'#92400e' },
-  night: { label:'🌙 กะกลางคืน', short:'กลางคืน', range:'20:00–08:00', color:'#4338ca', bg:'#eef2ff', border:'#c7d2fe', dark:'#312e81' },
+  day:   { label:'☀️ กะกลางวัน',  short:'กลางวัน',  range:'06:00–20:00', color:'#d97706', bg:'#fffbeb', border:'#fde68a', dark:'#92400e' },
+  night: { label:'🌙 กะกลางคืน', short:'กลางคืน', range:'20:00–06:00', color:'#4338ca', bg:'#eef2ff', border:'#c7d2fe', dark:'#312e81' },
 }
 
 // ── Helpers ─────────────────────────────────────────
