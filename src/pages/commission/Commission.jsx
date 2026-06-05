@@ -60,7 +60,9 @@ export default function Commission() {
 
   // backend import
   const backendFileRef = useRef(null)
-  const [backendPreview, setBackendPreview] = useState(null)
+  const [backendPreview,  setBackendPreview]  = useState(null)
+  const [compareResult,   setCompareResult]   = useState(null) // null | []
+  const [compareDate,     setCompareDate]     = useState(today)
 
   const admins  = users.filter(u => ['admin','head_admin'].includes(u.role))
   const myPages = isAdmin ? pages.filter(p => p.assignedTo?.includes(myUid) && p.status==='active') : pages
@@ -221,6 +223,50 @@ export default function Commission() {
       await importBackendOrders(backendPreview)
       setBackendPreview(null); setShowBackend(false)
     } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  // ── Compare: เพจของฉัน vs Backend ─────────────────
+  const handleCompare = (date) => {
+    const d = date || compareDate
+    // ดึงเพจที่แอดมินคนนี้รับผิดชอบ
+    const myPageIds = pages.filter(p => p.assignedTo?.includes(myUid)).map(p => p.id)
+    // ดึง commission ที่ลงในวันนั้น
+    const myDayComms = commissions.filter(c =>
+      c.date === d && (isAdmin ? myIds.includes(c.adminId) : true)
+    )
+    // ดึง backend ของเพจที่เกี่ยวข้อง
+    const dayBackend = backendOrders.filter(b => b.date === d)
+
+    // สร้าง compare result ต่อเพจ
+    const pageSet = [...new Set([
+      ...myDayComms.map(c => c.pageId),
+      ...dayBackend.map(b => b.pageId),
+      ...myPageIds
+    ])]
+
+    const result = pageSet.map(pageId => {
+      const comms   = myDayComms.filter(c => c.pageId === pageId)
+      const backend = dayBackend.find(b => b.pageId === pageId)
+      const declared = comms.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0)
+      const actual   = backend?.actualCount || 0
+      const diff     = actual - declared   // + = backend มากกว่า, - = แอดมินลงเกิน
+      const totalComm = comms.reduce((a,c)=>a+(c.total||(c.manualTotal||0)+(c.aiTotal||0))||((parseInt(c.manualOrders)||0)*(c.manualRate||commRates.manualRate||5)+(parseInt(c.aiOrders)||0)*(c.aiRate||commRates.aiRate||2)),0)
+      // คำนวณค่าคอมที่ควรได้จาก actual
+      const avgRate  = declared > 0 ? totalComm/declared : (commRates.manualRate||5)
+      const adjComm  = Math.round(Math.min(declared, actual) * avgRate)
+      const status   = !backend ? 'no_backend'
+                     : Math.abs(diff) <= 2 ? 'match'
+                     : diff < 0 ? 'over'   // แอดมินลงเกิน backend
+                     : 'under'              // backend มากกว่า
+      return {
+        pageId, declared, actual, diff, totalComm, adjComm,
+        comms, status,
+        adminNames: [...new Set(comms.map(c => getUserName(c.adminId)))],
+      }
+    }).filter(r => r.declared > 0 || r.actual > 0)
+
+    setCompareResult(result)
+    setCompareDate(d)
   }
 
   const openEdit = (item) => { setForm({...item, isNightSplit:false}); setEditItem(item); setErr(''); setShowForm(true) }
@@ -823,82 +869,375 @@ export default function Commission() {
       )}
 
 {tab==='backend' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {/* Import form */}
-          {showBackend && (
-            <div style={{ background:'#fffbeb', border:'2px solid #fde68a', borderRadius:16, padding:20 }}>
-              <input ref={backendFileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:'none' }} onChange={e=>e.target.files?.[0]&&handleBackendFile(e.target.files[0])}/>
-              <div style={{ fontSize:15, fontWeight:900, color:'#b45309', marginBottom:12 }}>🖥️ Import ออเดอร์จริงจาก Backend</div>
-              <div style={{ fontSize:12.5, color:'#92400e', marginBottom:14 }}>
-                ไฟล์ต้องมี column: <strong>เพจ / pageId</strong>, <strong>วันที่</strong>, <strong>จำนวนออเดอร์จริง</strong>
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* ── ส่วนบน: Import + เลือกวันที่ ── */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+
+            {/* Import Backend */}
+            <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'2px solid #fde68a', borderRadius:16, padding:18 }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#b45309', marginBottom:10, display:'flex', alignItems:'center', gap:7 }}>
+                <span>🖥️</span> Import ออเดอร์จริงจาก Backend
               </div>
+              <input ref={backendFileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:'none' }} onChange={e=>e.target.files?.[0]&&handleBackendFile(e.target.files[0])}/>
               {!backendPreview ? (
-                <button onClick={()=>backendFileRef.current?.click()}
-                  style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:10, padding:'10px 22px', cursor:'pointer', fontSize:14, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7 }}>
-                  <Upload size={15}/> เลือกไฟล์ Excel
-                </button>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <div style={{ fontSize:12.5, color:'#92400e' }}>
+                    ไฟล์ต้องมี column: <strong>เพจ/pageId</strong>, <strong>วันที่</strong>, <strong>จำนวนออเดอร์จริง</strong>
+                  </div>
+                  <button onClick={()=>backendFileRef.current?.click()}
+                    style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:10, padding:'10px 0', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:7 }}>
+                    <Upload size={14}/> เลือกไฟล์ Excel
+                  </button>
+                </div>
               ) : (
                 <>
-                  <div style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:10, overflow:'hidden', marginBottom:14, maxHeight:200, overflowY:'auto' }}>
+                  <div style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:10, overflow:'hidden', marginBottom:12, maxHeight:160, overflowY:'auto' }}>
                     <table style={{ width:'100%', borderCollapse:'collapse' }}>
                       <thead><tr style={{ background:'#fef3c7' }}>
-                        {['เพจ','วันที่','ออเดอร์จริง'].map((h,i)=><th key={i} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase' }}>{h}</th>)}
+                        {['เพจ','วันที่','ออเดอร์จริง'].map((h,i)=><th key={i} style={{ padding:'7px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309' }}>{h}</th>)}
                       </tr></thead>
                       <tbody>{backendPreview.map((r,i)=>(
                         <tr key={i} style={{ borderBottom:'1px solid #fef3c7' }}>
-                          <td style={{ padding:'8px 12px', fontSize:13 }}>{r.pageId}</td>
-                          <td style={{ padding:'8px 12px', fontSize:13 }}>{r.date}</td>
-                          <td style={{ padding:'8px 12px', fontSize:13, fontWeight:700, color:'#b45309' }}>{r.actualCount}</td>
+                          <td style={{ padding:'7px 12px', fontSize:12.5 }}>{getPageName(r.pageId)||r.pageId}</td>
+                          <td style={{ padding:'7px 12px', fontSize:12.5, color:'#6b7280' }}>{r.date}</td>
+                          <td style={{ padding:'7px 12px', fontSize:13, fontWeight:800, color:'#b45309' }}>{r.actualCount}</td>
                         </tr>
                       ))}</tbody>
                     </table>
                   </div>
-                  <div style={{ display:'flex', gap:10 }}>
-                    <button onClick={()=>setBackendPreview(null)} style={{ background:'#f1f5f9', border:'1.5px solid #dde3f5', borderRadius:9, padding:'8px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
-                    <button onClick={handleImportBackend} disabled={saving} style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:9, padding:'8px 20px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit' }}>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={()=>setBackendPreview(null)} style={{ flex:1, background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:9, padding:'8px 0', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
+                    <button onClick={handleImportBackend} disabled={saving}
+                      style={{ flex:2, background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:9, padding:'8px 0', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit' }}>
                       ✅ Import {backendPreview.length} รายการ
                     </button>
                   </div>
                 </>
               )}
             </div>
+
+            {/* Compare Panel */}
+            <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'2px solid #c7d2fe', borderRadius:16, padding:18 }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#4338ca', marginBottom:10, display:'flex', alignItems:'center', gap:7 }}>
+                🔍 เปรียบเทียบ: เพจของฉัน vs Backend
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>เลือกวันที่</div>
+                  <input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)}
+                    style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                </div>
+                <div style={{ fontSize:12, color:'#6b7280', background:'#fff', borderRadius:9, padding:'8px 12px', border:'1px solid #e0e7ff' }}>
+                  เพจที่รับผิดชอบ: <strong style={{ color:'#4338ca' }}>
+                    {pages.filter(p=>p.assignedTo?.includes(myUid)).length > 0
+                      ? pages.filter(p=>p.assignedTo?.includes(myUid)).map(p=>p.name).join(', ')
+                      : 'ทุกเพจ (superadmin/head)'}
+                  </strong>
+                </div>
+                <button onClick={()=>handleCompare(compareDate)}
+                  style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', border:'none', borderRadius:10, padding:'10px 0', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:7, boxShadow:'0 4px 12px rgba(99,102,241,.25)' }}>
+                  🔍 เปรียบเทียบเลย
+                </button>
+                {compareResult && (
+                  <button onClick={()=>setCompareResult(null)}
+                    style={{ background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>
+                    ✕ ล้างผล
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Compare Result ── */}
+          {compareResult && (
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                <div style={{ fontSize:16, fontWeight:900, color:'#1e1b4b' }}>
+                  📊 ผลเปรียบเทียบ — {compareDate}
+                </div>
+                {/* Summary badges */}
+                {[
+                  { v:compareResult.filter(r=>r.status==='match').length,      l:'✅ ตรงกัน',  c:'#059669', b:'#bbf7d0', bg:'#f0fdf4' },
+                  { v:compareResult.filter(r=>r.status==='over').length,       l:'⚠️ ลงเกิน',   c:'#b45309', b:'#fde68a', bg:'#fffbeb' },
+                  { v:compareResult.filter(r=>r.status==='under').length,      l:'📉 Backend มากกว่า', c:'#0284c7', b:'#bfdbfe', bg:'#eff6ff' },
+                  { v:compareResult.filter(r=>r.status==='no_backend').length, l:'❓ ไม่มีหลังบ้าน', c:'#6b7280', b:'#e5e7eb', bg:'#f9fafb' },
+                ].filter(k=>k.v>0).map((k,i)=>(
+                  <span key={i} style={{ background:k.bg, color:k.c, border:`1.5px solid ${k.b}`, borderRadius:99, padding:'4px 12px', fontSize:12.5, fontWeight:800 }}>
+                    {k.l}: {k.v}
+                  </span>
+                ))}
+              </div>
+
+              {/* Compare cards per page */}
+              {compareResult.map((r,ri)=>{
+                const bgMap = { match:'#f0fdf4', over:'#fffbeb', under:'#eff6ff', no_backend:'#f9fafb' }
+                const bdMap = { match:'#86efac', over:'#fde68a', under:'#bfdbfe', no_backend:'#e5e7eb' }
+                const clMap = { match:'#059669', over:'#b45309', under:'#0284c7', no_backend:'#6b7280' }
+                const iconMap = { match:'✅', over:'⚠️', under:'📉', no_backend:'❓' }
+                const labelMap = { match:'ตรงกัน', over:'แอดมินลงเกิน Backend', under:'Backend มากกว่าที่ลง', no_backend:'ไม่มีข้อมูลหลังบ้าน' }
+                return (
+                  <div key={ri} style={{ background:'#fff', border:`2px solid ${bdMap[r.status]}`, borderLeft:`5px solid ${clMap[r.status]}`, borderRadius:16, overflow:'hidden' }}>
+                    {/* Page header */}
+                    <div style={{ background:bgMap[r.status], padding:'12px 18px', borderBottom:`1px solid ${bdMap[r.status]}`, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b', display:'flex', alignItems:'center', gap:8 }}>
+                          📄 {getPageName(r.pageId)}
+                          <span style={{ background:bgMap[r.status], color:clMap[r.status], border:`1.5px solid ${bdMap[r.status]}`, borderRadius:99, padding:'2px 10px', fontSize:12, fontWeight:700 }}>
+                            {iconMap[r.status]} {labelMap[r.status]}
+                          </span>
+                        </div>
+                        {r.adminNames.length > 0 && (
+                          <div style={{ fontSize:12, color:'#6b7280', marginTop:3 }}>
+                            แอดมิน: {r.adminNames.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                      {/* KPI row */}
+                      <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
+                        <div style={{ textAlign:'center' }}>
+                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ลงไว้</div>
+                          <div style={{ fontSize:20, fontWeight:900, color:'#1e1b4b' }}>{r.declared}</div>
+                        </div>
+                        <div style={{ textAlign:'center' }}>
+                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>Backend จริง</div>
+                          <div style={{ fontSize:20, fontWeight:900, color:r.status==='match'?'#059669':clMap[r.status] }}>{r.actual||'—'}</div>
+                        </div>
+                        <div style={{ textAlign:'center' }}>
+                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ผลต่าง</div>
+                          <div style={{ fontSize:20, fontWeight:900, color:r.diff===0?'#059669':r.diff<0?'#be123c':'#0284c7' }}>
+                            {r.diff===0?'±0':r.diff>0?`+${r.diff}`:r.diff}
+                          </div>
+                        </div>
+                        <div style={{ textAlign:'center' }}>
+                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ค่าคอมที่ลง</div>
+                          <div style={{ fontSize:18, fontWeight:900, color:'#7c3aed' }}>฿{Math.round(r.totalComm).toLocaleString()}</div>
+                        </div>
+                        {r.status !== 'match' && r.status !== 'no_backend' && (
+                          <div style={{ textAlign:'center' }}>
+                            <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ค่าคอมที่ควรได้</div>
+                            <div style={{ fontSize:18, fontWeight:900, color:'#059669' }}>฿{r.adjComm.toLocaleString()}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Per-admin breakdown */}
+                    {r.comms.length > 0 && (
+                      <div style={{ overflowX:'auto' }}>
+                        <table style={{ width:'100%', borderCollapse:'collapse', minWidth:600 }}>
+                          <thead>
+                            <tr style={{ background:'#f8faff', borderBottom:`1.5px solid ${bdMap[r.status]}` }}>
+                              {['แอดมิน','กะ','🖐 มือ','🤖 AI','ออเดอร์รวม','ค่าคอม','ปรับหลังหัก'].map((h,i)=>(
+                                <th key={i} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:clMap[r.status], whiteSpace:'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.comms.map((c,ci)=>{
+                              const orders = (parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0)
+                              const comm = c.total||(c.manualTotal||0)+(c.aiTotal||0)||((parseInt(c.manualOrders)||0)*(c.manualRate||commRates.manualRate||5)+(parseInt(c.aiOrders)||0)*(c.aiRate||commRates.aiRate||2))
+                              const ratio = r.declared>0 ? orders/r.declared : 0
+                              const adjOrders = r.actual>0 ? Math.round(Math.min(r.declared,r.actual)*ratio*10)/10 : orders
+                              const adjComm2 = r.actual>0 ? Math.round(adjOrders*(r.declared>0?comm/orders:0)*10)/10 : comm
+                              return (
+                                <tr key={ci} style={{ borderBottom:`1px solid ${bgMap[r.status]}` }}>
+                                  <td style={{ padding:'9px 12px' }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                                      <div style={{ width:26, height:26, borderRadius:'50%', background:`linear-gradient(135deg,${clMap[r.status]},#7c3aed)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800 }}>
+                                        {getUserName(c.adminId).slice(0,2)}
+                                      </div>
+                                      <span style={{ fontSize:13, fontWeight:700 }}>{getUserName(c.adminId)}</span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding:'9px 12px' }}>
+                                    <span style={{ background:c.shift==='night'?'#eef2ff':'#fffbeb', color:c.shift==='night'?'#4338ca':'#b45309', border:`1px solid ${c.shift==='night'?'#c7d2fe':'#fde68a'}`, borderRadius:99, padding:'2px 7px', fontSize:11, fontWeight:700 }}>
+                                      {c.shift==='night'?'🌙 กลางคืน':'☀️ กลางวัน'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#7c3aed' }}>{c.manualOrders||0}</td>
+                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#0f766e' }}>{c.aiOrders||0}</td>
+                                  <td style={{ padding:'9px 12px', fontWeight:800 }}>{orders}</td>
+                                  <td style={{ padding:'9px 12px', fontWeight:900, color:'#7c3aed' }}>฿{Math.round(comm).toLocaleString()}</td>
+                                  <td style={{ padding:'9px 12px' }}>
+                                    {r.status==='match' ? (
+                                      <span style={{ color:'#059669', fontWeight:700 }}>✅ ฿{Math.round(comm).toLocaleString()}</span>
+                                    ) : r.status==='no_backend' ? (
+                                      <span style={{ color:'#9ca3af' }}>—</span>
+                                    ) : (
+                                      <span style={{ color:'#059669', fontWeight:800 }}>฿{adjComm2.toLocaleString()}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                          {r.comms.length > 1 && (
+                            <tfoot>
+                              <tr style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', borderTop:'2px solid #ddd6fe' }}>
+                                <td colSpan={4} style={{ padding:'9px 12px', fontSize:13, fontWeight:900, color:'#6d28d9' }}>รวม</td>
+                                <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>{r.declared}</td>
+                                <td style={{ padding:'9px 12px', fontSize:15, fontWeight:900, color:'#7c3aed' }}>฿{Math.round(r.totalComm).toLocaleString()}</td>
+                                <td style={{ padding:'9px 12px', fontSize:15, fontWeight:900, color:'#059669' }}>฿{r.adjComm.toLocaleString()}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           )}
-          {/* Backend list */}
+
+          {/* ── Backend list + grouped summary ── */}
           <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
             <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', fontSize:14, fontWeight:800, color:'#b45309' }}>
               🖥️ ออเดอร์จริงจากหลังบ้าน ({backendOrders.length} รายการ)
             </div>
-            {/* ── สรุปรวมตามเพจ+วันที่ (3 คนลงเพจเดียวกัน) ── */}
+            {/* ── สรุปรวมตามเพจ+วันที่ (หลายคนต่อเพจ) ── */}
             {(() => {
               const grouped = {}
               backendOrders.forEach(b => {
                 const key = `${b.date}__${b.pageId}`
-                if (!grouped[key]) grouped[key] = { date:b.date, pageId:b.pageId, total:0, count:0 }
-                grouped[key].total += (b.actualOrders||b.manualOrders||0)
+                if (!grouped[key]) grouped[key] = { date:b.date, pageId:b.pageId, actualTotal:0, count:0 }
+                grouped[key].actualTotal += (b.actualCount||0)
                 grouped[key].count += 1
               })
-              const multiPage = Object.values(grouped).filter(g=>g.count>1)
-              if (!multiPage.length) return null
+
+              const enriched = Object.values(grouped).map(g => {
+                const dayComms = commissions.filter(c => c.date===g.date && c.pageId===g.pageId)
+                const adminTotalOrders = dayComms.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0)
+                const adminsDetail = dayComms.map(c => {
+                  const manual  = parseInt(c.manualOrders)||0
+                  const ai      = parseInt(c.aiOrders)||0
+                  const orders  = manual + ai
+                  const ratio   = adminTotalOrders>0 ? orders/adminTotalOrders : 0
+                  const missing = Math.max(0, adminTotalOrders - g.actualTotal)
+                  const deduct  = Math.round(missing * ratio * 10)/10
+                  const adjOrders = Math.max(0, Math.round((orders - deduct)*10)/10)
+                  const mRate   = c.manualRate||commRates.manualRate||5
+                  const aRate   = c.aiRate||commRates.aiRate||2
+                  const comm    = Math.round((manual*mRate + ai*aRate)*10)/10
+                  const adjComm = orders>0 ? Math.round(adjOrders*(comm/orders)*10)/10 : 0
+                  return { ...c, orders, ratio, adjOrders, comm, adjComm, deduct }
+                })
+                const totalComm = adminsDetail.reduce((a,d)=>a+d.comm,0)
+                const avgComm   = adminsDetail.length>0 ? Math.round(totalComm/adminsDetail.length) : 0
+                return { ...g, adminsDetail, adminTotalOrders, totalComm, avgComm }
+              }).filter(g=>g.count>1)  // แสดงเฉพาะเพจที่มีหลายคน
+
+              if (!enriched.length) return null
               return (
-                <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'2px solid #fde68a', borderRadius:12, padding:'14px 18px', marginBottom:8 }}>
-                  <div style={{ fontSize:13.5, fontWeight:900, color:'#b45309', marginBottom:10 }}>👥 เพจที่มีหลายคนลง — สรุปรวม</div>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
-                    {multiPage.map((g,i)=>(
-                      <div key={i} style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:10, padding:'10px 16px', display:'flex', gap:12, alignItems:'center' }}>
-                        <div>
-                          <div style={{ fontSize:12.5, fontWeight:800, color:'#1e1b4b' }}>{getPageName(g.pageId)}</div>
-                          <div style={{ fontSize:11.5, color:'#6b7280' }}>{g.date} · {g.count} คนลง</div>
-                        </div>
-                        <div style={{ fontSize:22, fontWeight:900, color:'#b45309' }}>{g.total}</div>
-                        <div style={{ fontSize:11, color:'#6b7280' }}>ออเดอร์รวม</div>
-                      </div>
-                    ))}
+                <div style={{ padding:'16px', borderBottom:'1.5px solid #fde68a', background:'linear-gradient(135deg,#fffbeb55,#fff)', display:'flex', flexDirection:'column', gap:14 }}>
+                  <div style={{ fontSize:14, fontWeight:900, color:'#b45309', display:'flex', alignItems:'center', gap:8 }}>
+                    👥 สรุปรวมเพจที่มีหลายคนลง
+                    <span style={{ background:'#fde68a', color:'#92400e', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:800 }}>{enriched.length} เพจ</span>
                   </div>
+                  {enriched.map((g,gi)=>(
+                    <div key={gi} style={{ background:'#fff', border:'2px solid #fde68a', borderRadius:14, overflow:'hidden' }}>
+                      {/* Page header */}
+                      <div style={{ background:'linear-gradient(135deg,#fef3c7,#fffbeb)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:15, fontWeight:900, color:'#92400e' }}>📄 {getPageName(g.pageId)}</div>
+                          <div style={{ fontSize:12, color:'#b45309', marginTop:2 }}>{g.date} · {g.count} คนร่วม</div>
+                        </div>
+                        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                          {[
+                            { l:'ออเดอร์ที่ลง',   v:g.adminTotalOrders, c:'#1e1b4b' },
+                            { l:'ออเดอร์จริง',    v:g.actualTotal,      c:g.actualTotal<g.adminTotalOrders?'#be123c':g.actualTotal>g.adminTotalOrders?'#0284c7':'#059669' },
+                            { l:'ออเดอร์หาย',     v:Math.max(0,g.adminTotalOrders-g.actualTotal)||'—', c:'#be123c', hide:g.actualTotal>=g.adminTotalOrders },
+                            { l:'ค่าคอมรวม',      v:`฿${Math.round(g.totalComm).toLocaleString()}`, c:'#7c3aed' },
+                            { l:'ค่าคอมเฉลี่ย',   v:`฿${g.avgComm.toLocaleString()}/คน`,            c:'#0f766e' },
+                          ].filter(k=>!k.hide).map((k,ki)=>(
+                            <div key={ki} style={{ textAlign:'center', minWidth:60 }}>
+                              <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>{k.l}</div>
+                              <div style={{ fontSize:17, fontWeight:900, color:k.c }}>{k.v}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Per-admin table */}
+                      {g.adminsDetail.length>0 && (
+                        <div style={{ overflowX:'auto' }}>
+                          <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
+                            <thead>
+                              <tr style={{ background:'#fef9ec', borderBottom:'1.5px solid #fde68a' }}>
+                                {['แอดมิน','กะ','🖐 มือ','🤖 AI','ออเดอร์รวม','สัดส่วน','ออเดอร์หัก','ออเดอร์สุทธิ','ค่าคอม'].map((h,i)=>(
+                                  <th key={i} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', whiteSpace:'nowrap' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {g.adminsDetail.map((d,di)=>(
+                                <tr key={di} style={{ borderBottom:'1px solid #fef3c7', background:di%2===0?'#fffdf5':'#fff' }}>
+                                  <td style={{ padding:'9px 12px' }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                                      <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#d97706,#f59e0b)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800 }}>
+                                        {getUserName(d.adminId).slice(0,2)}
+                                      </div>
+                                      <span style={{ fontSize:13, fontWeight:700 }}>{getUserName(d.adminId)}</span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding:'9px 12px' }}>
+                                    <span style={{ background:d.shift==='night'?'#eef2ff':'#fffbeb', color:d.shift==='night'?'#4338ca':'#b45309', border:`1px solid ${d.shift==='night'?'#c7d2fe':'#fde68a'}`, borderRadius:99, padding:'2px 8px', fontSize:11, fontWeight:700 }}>
+                                      {d.shift==='night'?'🌙 กลางคืน':'☀️ กลางวัน'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#7c3aed' }}>{d.manualOrders||0}</td>
+                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#0f766e' }}>{d.aiOrders||0}</td>
+                                  <td style={{ padding:'9px 12px', fontWeight:800, color:'#1e1b4b' }}>{d.orders}</td>
+                                  <td style={{ padding:'9px 12px' }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                                      <div style={{ width:50, height:7, borderRadius:99, background:'#fde68a', overflow:'hidden' }}>
+                                        <div style={{ height:'100%', width:`${Math.round(d.ratio*100)}%`, background:'#d97706', borderRadius:99 }}/>
+                                      </div>
+                                      <span style={{ fontSize:12, fontWeight:700, color:'#92400e' }}>{Math.round(d.ratio*100)}%</span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding:'9px 12px', color:d.deduct>0?'#be123c':'#9ca3af', fontWeight:d.deduct>0?800:400 }}>
+                                    {d.deduct>0?`-${d.deduct}`:'—'}
+                                  </td>
+                                  <td style={{ padding:'9px 12px', fontWeight:800, color:'#1e1b4b' }}>{d.adjOrders}</td>
+                                  <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#7c3aed' }}>฿{d.adjComm.toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', borderTop:'2px solid #ddd6fe' }}>
+                                <td colSpan={4} style={{ padding:'9px 12px', fontSize:13, fontWeight:900, color:'#6d28d9' }}>∑ รวมทั้งเพจ</td>
+                                <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>
+                                  {g.adminsDetail.reduce((a,d)=>a+d.orders,0)}
+                                </td>
+                                <td style={{ padding:'9px 12px' }}/>
+                                <td style={{ padding:'9px 12px', fontSize:13, fontWeight:700, color:'#be123c' }}>
+                                  {g.adminsDetail.reduce((a,d)=>a+d.deduct,0)>0
+                                    ? `-${Math.round(g.adminsDetail.reduce((a,d)=>a+d.deduct,0)*10)/10}` : '—'}
+                                </td>
+                                <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>
+                                  {Math.round(g.adminsDetail.reduce((a,d)=>a+d.adjOrders,0)*10)/10}
+                                </td>
+                                <td style={{ padding:'9px 12px' }}>
+                                  <div style={{ fontSize:16, fontWeight:900, color:'#7c3aed' }}>
+                                    ฿{Math.round(g.totalComm).toLocaleString()}
+                                  </div>
+                                  <div style={{ fontSize:11, color:'#9ca3af', fontWeight:600 }}>
+                                    เฉลี่ย ฿{g.avgComm.toLocaleString()}/คน
+                                  </div>
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )
             })()}
-            <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:500 }}>
                 <thead><tr style={{ borderBottom:'1.5px solid #fde68a' }}>
                   {['วันที่','เพจ','ออเดอร์จริง','นำเข้าเมื่อ'].map((h,i)=>(
                     <th key={i} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
@@ -906,7 +1245,7 @@ export default function Commission() {
                 </tr></thead>
                 <tbody>
                   {backendOrders.length===0
-                    ?<tr><td colSpan={4} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีข้อมูลหลังบ้าน</td></tr>
+                    ?<tr><td colSpan={4} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีข้อมูลหลังบ้าน — Import ไฟล์ก่อน</td></tr>
                     :backendOrders.slice(0,50).map((b,i)=>(
                       <tr key={i} style={{ borderBottom:'1px solid #fef3c7' }}>
                         <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{b.date}</td>
@@ -925,7 +1264,6 @@ export default function Commission() {
         </div>
       )}
 
-      {/* ══════════ TAB: CANCELLED ══════════ */}
       {tab==='cancelled' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           {/* Add cancel form */}
