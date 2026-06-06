@@ -411,6 +411,7 @@ export default function Commission() {
           { emoji:'🖐',  label:'ตอบมือ (บ้าน)', val:`${totals.manual.toLocaleString()} → ฿${totals.mComm.toLocaleString()}`, bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', color:'#6d28d9', border:'#ddd6fe' },
           { emoji:'🤖', label:'AI (บ้าน)',       val:`${totals.ai.toLocaleString()} → ฿${totals.aComm.toLocaleString()}`,    bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', color:'#0f766e', border:'#99f6e4' },
           { emoji:'❌', label:'ยกเลิก / ไม่ชัด', val:`${totals.cancel} / ${totals.unclear}`,         bg:'linear-gradient(135deg,#fff1f2,#ffe4e6)', color:'#be123c', border:'#fecdd3' },
+          { emoji:'🫟', label:'กดยอดไม่ได้',      val:filtered.reduce((a,c)=>a+(c.pendingOrders||0),0), bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', color:'#7c3aed', border:'#ddd6fe' },
         ].map((k,i) => (
           <div key={i} style={{ background:k.bg, border:`1.5px solid ${k.border}`, borderRadius:14, padding:'16px 18px' }}>
             <div style={{ fontSize:24, marginBottom:8 }}>{k.emoji}</div>
@@ -523,8 +524,8 @@ export default function Commission() {
                 <div>
                   <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🕐 กะ</label>
                   <select style={S} value={form.shift} onChange={setF('shift')}>
-                    <option value="day">☀️ กะกลางวัน</option>
-                    <option value="night">🌙 กะกลางคืน</option>
+                    <option value="day">☀️ กะกลางวัน (05:00–20:00)</option>
+                    <option value="night">🌙 กะดึก (20:00–05:00)</option>
                   </select>
                 </div>
               </div>
@@ -620,11 +621,16 @@ export default function Commission() {
                         </div></div>
                     </div>
                   </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14 }}>
                     <div><label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>❌ ยกเลิก (บ้าน)</label>
                       <input type="number" min="0" style={{...S,textAlign:'center',color:'#be123c',fontWeight:700}} placeholder="0" value={form.cancelOrders} onChange={setF('cancelOrders')}/></div>
                     <div><label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#d97706', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🔍 ไม่ชัดเจน (บ้าน)</label>
                       <input type="number" min="0" style={{...S,textAlign:'center',color:'#d97706',fontWeight:700}} placeholder="0" value={form.unclearOrders} onChange={setF('unclearOrders')}/></div>
+                    <div>
+                      <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🫟 กดยอดไม่ได้ (บ้าน)</label>
+                      <input type="number" min="0" style={{...S,textAlign:'center',color:'#7c3aed',fontWeight:700}} placeholder="0" value={form.pendingOrders||''} onChange={setF('pendingOrders')}/>
+                      <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:4 }}>รับแล้ว ยังไม่ส่ง</div>
+                    </div>
                   </div>
                 </>
               )}
@@ -726,7 +732,7 @@ export default function Commission() {
                           </td>
                           <td style={{ padding:'10px 8px' }}>
                             <span style={{ background:sh.bg, color:sh.color, borderRadius:99, padding:'2px 8px', fontSize:11.5, fontWeight:700 }}>
-                              {c.shift==='night'?'🌙':'☀️'} {c.shift==='night'?'กลางคืน':'กลางวัน'}
+                              {c.shift==='night'?'🌙 กะดึก':'☀️ กลางวัน'}
                             </span>
                           </td>
                           <td style={{ textAlign:'center', fontSize:15, fontWeight:800, color:'#6d28d9' }}>{c.manualOrders||0}</td>
@@ -760,6 +766,7 @@ export default function Commission() {
                                 {l:'🖐 มือ',v:`${c.manualOrders||0} บ้าน × ฿${c.manualRate||0} = ฿${(c.manualTotal||0).toLocaleString()}`,color:'#6d28d9',bg:'#f5f3ff',border:'#ddd6fe'},
                                 {l:'🤖 AI', v:`${c.aiOrders||0} บ้าน × ฿${c.aiRate||0} = ฿${(c.aiTotal||0).toLocaleString()}`,color:'#0f766e',bg:'#f0fdfa',border:'#99f6e4'},
                                 {l:'❌ ปัญหา',v:`ยกเลิก ${c.cancelOrders||0} · ไม่ชัด ${c.unclearOrders||0}`,color:'#be123c',bg:'#fff1f2',border:'#fecdd3'},
+                                {l:'🫟 กดยอดไม่ได้',v:`${c.pendingOrders||0} บ้าน (รับแล้ว ยังไม่ส่ง)`,color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe'},
                                 {l:'💎 รวม',v:`฿${(c.total||0).toLocaleString()} · ${c.note||'ไม่มีหมายเหตุ'}`,color:'#4338ca',bg:'#eef2ff',border:'#c7d2fe'},
                               ].map((d,i)=>(
                                 <div key={i} style={{ background:d.bg, border:`1.5px solid ${d.border}`, borderRadius:10, padding:12 }}>
