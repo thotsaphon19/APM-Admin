@@ -100,12 +100,14 @@ export default function Commission() {
 
   // ── analysis: compute full enriched commissions ───
   const analysisDate = filters.date || today
+  // sync analysisMonth กับ filters.month
+  const effectiveAnalysisMonth = filters.month || analysisMonth
+  const effectiveAnalysisMode = filters.month ? 'month' : analysisMode
   const analysis = useMemo(() => {
-    if (analysisMode === 'month') {
-      // Month mode: คำนวณทุกวันในเดือน แล้วรวมกัน
-      const monthComms   = commissions.filter(c => c.date?.startsWith(analysisMonth))
-      const monthBackend = backendOrders.filter(b => b.date?.startsWith(analysisMonth))
-      const monthCancel  = cancelledOrders.filter(c => c.originalDate?.startsWith(analysisMonth))
+    if (effectiveAnalysisMode === 'month') {
+      const monthComms   = commissions.filter(c => c.date?.startsWith(effectiveAnalysisMonth))
+      const monthBackend = backendOrders.filter(b => b.date?.startsWith(effectiveAnalysisMonth))
+      const monthCancel  = cancelledOrders.filter(c => c.originalDate?.startsWith(effectiveAnalysisMonth))
       if (!monthComms.length) return []
       // Group by date แล้วคำนวณแต่ละวัน
       const dates = [...new Set(monthComms.map(c=>c.date))].sort()
@@ -125,7 +127,7 @@ export default function Commission() {
     const dayCancel  = cancelledOrders.filter(c => c.originalDate === analysisDate)
     if (!dayComms.length) return []
     return computeDailyCommissions(dayComms, dayBackend, dayCancel, commRates.manualRate||5, commRates.aiRate||2)
-  }, [commissions, backendOrders, cancelledOrders, analysisDate, analysisMonth, analysisMode, commRates])
+  }, [commissions, backendOrders, cancelledOrders, analysisDate, analysisMonth, effectiveAnalysisMonth, analysisMode, commRates, filters])
 
   // ── totals ────────────────────────────────────────
   const totals = useMemo(() => filtered.reduce((a,c) => ({
@@ -306,9 +308,18 @@ export default function Commission() {
   // ── tab items ─────────────────────────────────────
   // ── สรุปของฉัน ───────────────────────────────────
   // Filter แบบ loose: รองรับทั้ง Firebase uid และ Firestore doc id
-  const myComm  = commissions.filter(c => myIds.includes(c.adminId))
+  // myComm: filter by myIds — รองรับทั้ง uid และ username (displayName)
+  const myComm  = commissions.filter(c => {
+    if (myIds.includes(c.adminId)) return true
+    // fallback: ตรวจ profile.name หรือ display fields
+    if (profile?.name && c.adminId === profile.name) return true
+    if (profile?.username && c.adminId === profile.username) return true
+    return false
+  })
   const myToday = myComm.filter(c => c.date === today)
-  const myMonth = myComm.filter(c => c.date?.startsWith(today.slice(0,7)))
+  // ใช้ filters.month ถ้ามี มิฉะนั้นใช้เดือนปัจจุบัน
+  const activeMonth = filters.month || today.slice(0,7)
+  const myMonth = myComm.filter(c => c.date?.startsWith(activeMonth))
   const calcTotal = c => (c.total) || (c.manualTotal||0)+(c.aiTotal||0) || 
     ((c.manualOrders||0)*(c.manualRate||5))+((c.aiOrders||0)*(c.aiRate||2))
   const myTodayTotal  = myToday.reduce((a,c)=>a+calcTotal(c),0)
@@ -325,8 +336,8 @@ export default function Commission() {
   ]
 
   // ── Summary computation ──────────────────────────
+  const effectiveSumMonth = filters.month || sumMonth
   const summaryData = useMemo(() => {
-    // กรองตาม mode
     let base = canSeeAll ? commissions : commissions.filter(c => myIds.includes(c.adminId))
 
     if (sumMode === 'day') {
@@ -341,7 +352,7 @@ export default function Commission() {
       const sunStr = sun.toISOString().slice(0,10)
       base = base.filter(c => c.date >= monStr && c.date <= sunStr)
     } else if (sumMode === 'month') {
-      base = base.filter(c => c.date?.startsWith(sumMonth))
+      base = base.filter(c => c.date?.startsWith(effectiveSumMonth))
     } else if (sumMode === 'year') {
       base = base.filter(c => c.date?.startsWith(sumYear))
     }
@@ -392,7 +403,7 @@ export default function Commission() {
     }),{manual:0,ai:0,orders:0,total:0,saleAmount:0})
 
     return { rows, grand, byDateArr, count: base.length }
-  }, [commissions, sumMode, sumDate, sumMonth, sumYear, myIds, canSeeAll, commRates])
+  }, [commissions, sumMode, sumDate, sumMonth, effectiveSumMonth, sumYear, myIds, canSeeAll, commRates, filters])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
@@ -443,21 +454,30 @@ export default function Commission() {
         ))}
       </div>
 
-      {/* ── Tabs ── */}
-      <div style={{ display:'flex', background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:12, padding:4, width:'fit-content', gap:3, flexWrap:'wrap' }}>
-        {TABS.map(t => (
-          <button key={t.k} onClick={() => setTab(t.k)}
-            style={{ padding:'8px 16px', borderRadius:9, border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
-              background: tab===t.k ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : 'transparent',
-              color: tab===t.k ? '#fff' : '#6366f1', display:'flex', alignItems:'center', gap:6 }}>
-            {t.label}
-            {t.count > 0 && (
-              <span style={{ background:tab===t.k?'rgba(255,255,255,.3)':'#c7d2fe', color:tab===t.k?'#fff':'#4338ca', borderRadius:99, padding:'1px 7px', fontSize:11, fontWeight:900 }}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* ── Month badge + Tabs ── */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+        {filters.month && (
+          <div style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', borderRadius:10, padding:'5px 12px', display:'inline-flex', alignItems:'center', gap:6 }}>
+            <span style={{ fontSize:12.5, fontWeight:800, color:'#fff' }}>📅 {filters.month}</span>
+            <button onClick={()=>setFilters(p=>({...p,month:''}))}
+              style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:5, width:18, height:18, cursor:'pointer', color:'#fff', fontSize:10, fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+          </div>
+        )}
+        <div style={{ display:'flex', background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:12, padding:4, gap:3, flexWrap:'wrap' }}>
+          {TABS.map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)}
+              style={{ padding:'8px 16px', borderRadius:9, border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
+                background: tab===t.k ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : 'transparent',
+                color: tab===t.k ? '#fff' : '#6366f1', display:'flex', alignItems:'center', gap:6 }}>
+              {t.label}
+              {t.count > 0 && (
+                <span style={{ background:tab===t.k?'rgba(255,255,255,.3)':'#c7d2fe', color:tab===t.k?'#fff':'#4338ca', borderRadius:99, padding:'1px 7px', fontSize:11, fontWeight:900 }}>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Filters ── */}
@@ -934,7 +954,7 @@ export default function Commission() {
               <div style={{ display:'flex', gap:6 }}>
                 {[{v:'day',l:'📅 รายวัน'},{v:'month',l:'🗓️ รายเดือน'}].map(m=>(
                   <button key={m.v} onClick={()=>setAnalysisMode(m.v)}
-                    style={{ background:analysisMode===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${analysisMode===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:13, fontWeight:700, color:analysisMode===m.v?'#fff':'#6b7280', fontFamily:'inherit' }}>
+                    style={{ background:(effectiveAnalysisMode||analysisMode)===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${analysisMode===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:13, fontWeight:700, color:analysisMode===m.v?'#fff':'#6b7280', fontFamily:'inherit' }}>
                     {m.l}
                   </button>
                 ))}
@@ -952,7 +972,7 @@ export default function Commission() {
             {analysisMode === 'month' && (
               <div>
                 <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>เดือน</div>
-                <input type="month" value={analysisMonth} onChange={e=>setAnalysisMonth(e.target.value)}
+                <input type="month" value={effectiveAnalysisMonth} onChange={e=>{setAnalysisMonth(e.target.value); setFilters(p=>({...p,month:e.target.value}))}}
                   style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
               </div>
             )}
@@ -1165,21 +1185,27 @@ export default function Commission() {
 
           {/* KPI ของฉัน */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 }}>
-            {/* Month filter bar */}
-            <div style={{ display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end', marginBottom:4 }}>
-              <div>
-                <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>กรองเดือน</div>
-                <input type="month" value={filters.month||today.slice(0,7)} onChange={e=>setFilters(p=>({...p,month:e.target.value}))}
-                  style={{ padding:'7px 11px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13, color:'#4338ca', fontFamily:'inherit' }}/>
+            {/* Month selector banner */}
+            <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'1.5px solid #c7d2fe', borderRadius:14, padding:'12px 18px', display:'flex', flexWrap:'wrap', alignItems:'center', gap:14 }}>
+              <div style={{ fontSize:14, fontWeight:900, color:'#4338ca' }}>📅 สรุปของฉัน</div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:12, color:'#6b7280' }}>เดือน:</span>
+                <input type="month" value={activeMonth} onChange={e=>setFilters(p=>({...p,month:e.target.value}))}
+                  style={{ padding:'6px 11px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#4338ca', fontFamily:'inherit', fontWeight:700 }}/>
               </div>
-              <div style={{ fontSize:13, color:'#6b7280', paddingBottom:8 }}>
-                แสดงข้อมูลเดือน <strong style={{color:'#4338ca'}}>{filters.month||today.slice(0,7)}</strong>
+              <div style={{ display:'flex', gap:8 }}>
+                <span style={{ background:'#fff', border:'1.5px solid #c7d2fe', borderRadius:99, padding:'4px 12px', fontSize:12.5, fontWeight:700, color:'#4338ca' }}>
+                  {myMonth.length} รายการ
+                </span>
+                <span style={{ background:'#fff', border:'1.5px solid #c7d2fe', borderRadius:99, padding:'4px 12px', fontSize:12.5, fontWeight:700, color:'#7c3aed' }}>
+                  ฿{myMonthTotal.toLocaleString()}
+                </span>
               </div>
             </div>
             {[
-              { e:'💎', l:'ค่าคอมวันนี้',   v:`฿${myTodayTotal.toLocaleString()}`, c:'#4338ca', bg:'linear-gradient(135deg,#eef2ff,#e0e7ff)', b:'#c7d2fe' },
-              { e:'📦', l:'ออเดอร์วันนี้',   v:myTotalOrders, c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
-              { e:'📅', l:'ค่าคอมเดือนนี้',  v:`฿${myMonthTotal.toLocaleString()}`, c:'#7c3aed', bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', b:'#ddd6fe' },
+              { e:'💎', l:filters.month?`ค่าคอม ${filters.month}`:'ค่าคอมวันนี้', v:`฿${filters.month?myMonthTotal.toLocaleString():myTodayTotal.toLocaleString()}`, c:'#4338ca', bg:'linear-gradient(135deg,#eef2ff,#e0e7ff)', b:'#c7d2fe' },
+              { e:'📦', l:filters.month?`ออเดอร์ ${filters.month}`:'ออเดอร์วันนี้', v:(filters.month?myMonth:myToday).reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0), c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
+              { e:'📅', l:`ลงข้อมูล ${activeMonth}`, v:`${myMonth.length} ครั้ง`, c:'#7c3aed', bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', b:'#ddd6fe' },
               { e:'📋', l:'ลงข้อมูลเดือนนี้', v:`${myMonth.length} ครั้ง`, c:'#b45309', bg:'linear-gradient(135deg,#fffbeb,#fef3c7)', b:'#fde68a' },
               { e:'🎯', l:'ออเดอร์โปร',      v:myComm.reduce((a,c)=>a+(parseInt(c.proOrders)||0),0), c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
               { e:'💵', l:'ยอดขายรวม',       v:`฿${myComm.filter(c=>c.adminId===myUid).reduce((a,c)=>a+(parseFloat(c.saleAmount)||0),0).toLocaleString()}`, c:'#0f766e', bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', b:'#99f6e4' },
@@ -1196,7 +1222,7 @@ export default function Commission() {
           <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
             <div style={{ padding:'14px 18px', borderBottom:'1px solid #f0f4ff', display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(135deg,#f5f3ff,#eef2ff)' }}>
               <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b' }}>👤 รายการของฉัน</div>
-              <div style={{ fontSize:12.5, color:'#6b7280' }}>{myComm.length} รายการทั้งหมด</div>
+              <div style={{ fontSize:12.5, color:'#6b7280' }}>{myMonth.length} รายการ ({activeMonth})</div>
             </div>
             <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
@@ -1208,7 +1234,7 @@ export default function Commission() {
                   </tr>
                 </thead>
                 <tbody>
-                  {myComm.slice().sort((a,b)=>b.date?.localeCompare(a.date||'')).map((c,i)=>(
+                  {myMonth.slice().sort((a,b)=>b.date?.localeCompare(a.date||'')).map((c,i)=>(
                     <tr key={c.id||i} style={{ borderBottom:'1px solid #f0f4ff' }}>
                       <td style={{ padding:'10px 12px', fontWeight:700, color:'#1e1b4b', whiteSpace:'nowrap' }}>{c.date}</td>
                       <td style={{ padding:'10px 12px', color:'#4338ca', fontWeight:600 }}>{getPage(c.pageId) ? <PageBadge page={getPage(c.pageId)} size='sm'/> : <span style={{color:'#9ca3af'}}>—</span>}</td>
@@ -1225,7 +1251,7 @@ export default function Commission() {
                       <td style={{ padding:'10px 12px', fontSize:12, color:'#6b7280' }}>{c.note||'—'}</td>
                     </tr>
                   ))}
-                  {myComm.length===0&&(
+                  {myMonth.length===0&&(
                     <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#9ca3af' }}>
                       <div style={{ fontSize:20, marginBottom:8 }}>📭</div>
                       <div style={{ fontWeight:700, color:'#6b7280', marginBottom:4 }}>ยังไม่มีข้อมูล</div>
@@ -1278,7 +1304,7 @@ export default function Commission() {
               {sumMode==='month' && (
                 <div>
                   <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>เดือน</div>
-                  <input type="month" value={sumMonth} onChange={e=>setSumMonth(e.target.value)}
+                  <input type="month" value={effectiveSumMonth} onChange={e=>{setSumMonth(e.target.value); setFilters(p=>({...p,month:e.target.value}))}}
                     style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
                 </div>
               )}
