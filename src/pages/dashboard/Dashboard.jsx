@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
 import { useData } from '../../contexts/DataContext'
+import PageBadge from '../../components/ui/PageBadge'
 import { Avatar, Empty } from '../../components/ui'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -222,7 +223,7 @@ export default function Dashboard() {
                   <div style={{ width:9, height:9, borderRadius:'50%', background:active.length>0?'#22c55e':'#d1d5db', flexShrink:0 }}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:'#1e1b4b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {p.type==='main'?'⭐':'🧪'} {p.name}
+                      {(() => { return <PageBadge page={p} size='sm'/> })()} 
                     </div>
                   </div>
                   {active.length>0 ? (
