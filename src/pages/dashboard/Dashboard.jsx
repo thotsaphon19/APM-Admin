@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
@@ -18,16 +18,30 @@ const TT = {
   contentStyle:{ background:'#fff', border:'1.5px solid #e5e7eb', borderRadius:12, color:'#1e1b4b', fontSize:12, boxShadow:'0 4px 16px rgba(0,0,0,.1)' }
 }
 
-const KPI_CARDS = [
-  { key:'todayComm',  emoji:'💰', label:'ค่าคอมวันนี้',    suffix:'฿', colorClass:'grad-card-indigo', valueColor:'#4338ca' },
-  { key:'todayOrders',emoji:'📦', label:'ออเดอร์วันนี้',   suffix:'',  colorClass:'grad-card-teal',   valueColor:'#0f766e' },
-  { key:'monthComm',  emoji:'📊', label:'ค่าคอมเดือนนี้',  suffix:'฿', colorClass:'grad-card-pink',   valueColor:'#be185d' },
-  { key:'cancelOrders',emoji:'❌',label:'ออเดอร์ยกเลิก',   suffix:'',  colorClass:'grad-card-amber',  valueColor:'#b45309' },
+const KPI_CARD_DEFS = [
+  { key:'todayComm',  emoji:'💰', labelDay:'ค่าคอมวันนี้', labelMonth:'ค่าคอมเดือนนี้', labelYear:'ค่าคอมปีนี้',  suffix:'฿', colorClass:'grad-card-indigo', valueColor:'#4338ca' },
+  { key:'todayOrders',emoji:'📦', labelDay:'ออเดอร์วันนี้', labelMonth:'ออเดอร์เดือนนี้',labelYear:'ออเดอร์ปีนี้', suffix:'',  colorClass:'grad-card-teal',   valueColor:'#0f766e' },
+  { key:'monthComm',  emoji:'📊', labelDay:'ค่าคอมเดือนนี้',labelMonth:'ค่าคอมเดือนที่เลือก',labelYear:'ค่าคอมเดือนนี้', suffix:'฿', colorClass:'grad-card-pink',   valueColor:'#be185d' },
+  { key:'cancelOrders',emoji:'❌',labelDay:'ออเดอร์ยกเลิก',labelMonth:'ยกเลิกเดือนนี้', labelYear:'ยกเลิกปีนี้', suffix:'',  colorClass:'grad-card-amber',  valueColor:'#b45309' },
 ]
 
 export default function Dashboard() {
   const { profile } = useAuth()
   const { commissions, pages, leaves, users, checkins, getCommStats, getUserName, getPageName } = useData()
+
+  // ── Period selector ──────────────────────────────
+  const [period, setPeriod] = useState('day')  // day | month | year
+  const [selDate,  setSelDate]  = useState(today)
+  const [selMonth, setSelMonth] = useState(thisMonth)
+  const [selYear,  setSelYear]  = useState(today.slice(0,4))
+
+  // Build filter based on period
+  const periodFilter = useMemo(() => {
+    if (period === 'day')   return { date: selDate }
+    if (period === 'month') return { month: selMonth }
+    if (period === 'year')  return {}  // filter below by year
+    return {}
+  }, [period, selDate, selMonth, selYear])
 
   const todayComm = useMemo(()=>{
     const f={date:today}
@@ -41,11 +55,21 @@ export default function Dashboard() {
     return getCommStats(f)
   },[commissions,profile])
 
+  // Period-based stats
+  const periodComm = useMemo(()=>{
+    let base = commissions
+    if(profile?.role==='admin') base = base.filter(c=>c.adminId===profile.id)
+    if(period==='day')   base = base.filter(c=>c.date===selDate)
+    if(period==='month') base = base.filter(c=>c.date?.startsWith(selMonth))
+    if(period==='year')  base = base.filter(c=>c.date?.startsWith(selYear))
+    return base
+  },[commissions,profile,period,selDate,selMonth,selYear])
+
   const kpiValues = {
-    todayComm:   todayComm.reduce((a,c)=>a+(c.total||0),0),
-    todayOrders: todayComm.reduce((a,c)=>a+(c.manualOrders||0)+(c.aiOrders||0),0),
-    monthComm:   monthComm.reduce((a,c)=>a+(c.total||0),0),
-    cancelOrders:todayComm.reduce((a,c)=>a+(c.cancelOrders||0),0),
+    todayComm:    periodComm.reduce((a,c)=>a+(c.total||(c.manualTotal||0)+(c.aiTotal||0)||((c.manualOrders||0)*(c.manualRate||5)+(c.aiOrders||0)*(c.aiRate||2))),0),
+    todayOrders:  periodComm.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0),
+    monthComm:    monthComm.reduce((a,c)=>a+(c.total||0),0),
+    cancelOrders: periodComm.reduce((a,c)=>a+(c.cancelOrders||0),0),
   }
 
 
@@ -112,9 +136,32 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Period Selector */}
+      <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, padding:'12px 18px', display:'flex', flexWrap:'wrap', alignItems:'center', gap:12 }}>
+        <div style={{ display:'flex', gap:6 }}>
+          {[{v:'day',l:'📅 รายวัน'},{v:'month',l:'🗓️ รายเดือน'},{v:'year',l:'📊 รายปี'}].map(m=>(
+            <button key={m.v} onClick={()=>setPeriod(m.v)}
+              style={{ background:period===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${period===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:13, fontWeight:700, color:period===m.v?'#fff':'#6b7280', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+              {m.l}
+            </button>
+          ))}
+        </div>
+        {period==='day'   && <input type="date"  value={selDate}  onChange={e=>setSelDate(e.target.value)}  style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#4338ca', fontFamily:'inherit' }}/>}
+        {period==='month' && <input type="month" value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#4338ca', fontFamily:'inherit' }}/>}
+        {period==='year'  && (
+          <select value={selYear} onChange={e=>setSelYear(e.target.value)}
+            style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#4338ca', fontFamily:'inherit' }}>
+            {Array.from({length:5},(_,i)=>String(new Date().getFullYear()-i)).map(y=><option key={y} value={y}>{y}</option>)}
+          </select>
+        )}
+        <div style={{ marginLeft:'auto', background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'1px solid #c7d2fe', borderRadius:99, padding:'5px 14px', fontSize:12.5, fontWeight:700, color:'#4338ca' }}>
+          {periodComm.length} รายการ · ฿{periodComm.reduce((a,c)=>a+(c.total||(c.manualTotal||0)+(c.aiTotal||0)),0).toLocaleString()}
+        </div>
+      </div>
+
       {/* KPI cards */}
       <div className="grid grid-4" style={{ gap:14 }}>
-        {KPI_CARDS.map((k,i)=>(
+        {KPI_CARD_DEFS.map((k,i)=>(
           <div key={i} className={`card ${k.colorClass}`} style={{ borderRadius:16, padding:'18px 20px' }}>
             <div style={{ fontSize:28, marginBottom:8 }}>{k.emoji}</div>
             <div style={{ fontSize:26, fontWeight:900, color:k.valueColor, lineHeight:1 }}>
@@ -122,7 +169,9 @@ export default function Dashboard() {
                 ? kpiValues[k.key].toLocaleString()
                 : kpiValues[k.key]}
             </div>
-            <div style={{ fontSize:12.5, color:'#6b7280', marginTop:6, fontWeight:600 }}>{k.label}</div>
+            <div style={{ fontSize:12.5, color:'#6b7280', marginTop:6, fontWeight:600 }}>
+              {period==='day'?k.labelDay:period==='month'?k.labelMonth:k.labelYear}
+            </div>
           </div>
         ))}
       </div>
