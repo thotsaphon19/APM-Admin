@@ -6,6 +6,7 @@ import {
 import { th } from 'date-fns/locale'
 import { useAuth } from '../../contexts/AuthContext'
 import { useData } from '../../contexts/DataContext'
+import PageBadge from '../../components/ui/PageBadge'
 import { useNotify } from '../../hooks/useNotify'
 import {
   Lock, Download, AlertTriangle, ChevronDown, ChevronUp,
@@ -22,7 +23,7 @@ export default function Payroll() {
     users, commissions, backendOrders, cancelledOrders, commRates,
     salaryConfigs, saveSalary,
     payrollLocks, confirmPayroll, isPayrollLocked,
-    getUserName,
+    getUserName, getPageName, getPage, pages,
   } = useData()
   const { notifyCustom } = useNotify()
 
@@ -113,8 +114,7 @@ export default function Payroll() {
       const admin  = recs.reduce((a, c) => a + (c.manualOrders || 0) + (c.aiOrders || 0), 0)
       const backend = bRec?.actualCount ?? null
       const diff   = backend !== null ? admin - backend : null
-      const pgName  = (window._pageNames || {})[pageId] || pageId
-      return { adminId, pageId: pgName, date, adminOrders: admin, backendOrds: backend, diff, adminName: getUserName(adminId) }
+      return { adminId, pageId, date, adminOrders: admin, backendOrds: backend, diff, adminName: getUserName(adminId) }
     }).sort((a, b) => (Math.abs(b.diff) || 0) - (Math.abs(a.diff) || 0))
   }, [commissions, backendOrders, month, getUserName])
 
@@ -470,7 +470,7 @@ export default function Payroll() {
                     <tr key={i} style={{ borderBottom: '1px solid #f0f4ff', background: r.diff > 0 ? '#fffafb' : r.diff < 0 ? '#f0fdf4' : 'transparent' }}>
                       <td style={{ padding: '10px 12px', fontSize: 12.5, color: '#6b7280' }}>{r.date}</td>
                       <td style={{ padding: '10px 12px', fontSize: 13.5, fontWeight: 600, color: '#1e1b4b' }}>{r.adminName}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 13, color: '#4b5563', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.pageId}</td>
+                      <td style={{ padding: '10px 12px', maxWidth: 160 }}><PageBadge page={getPage(r.pageId)} size='sm'/></td>
                       <td style={{ textAlign: 'center', fontSize: 15, fontWeight: 800, color: '#4338ca' }}>{r.adminOrders}</td>
                       <td style={{ textAlign: 'center', fontSize: 15 }}>
                         {r.backendOrds !== null
