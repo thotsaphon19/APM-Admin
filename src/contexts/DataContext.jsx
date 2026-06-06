@@ -142,6 +142,7 @@ export function DataProvider({ children }) {
   }
   const getUserName = (id) => users.find(u => u.id === id)?.name || '—'
   const getPageName = (id) => pages.find(p => p.id === id)?.name || '—'
+  const getPage     = (id) => pages.find(p => p.id === id) || null
 
   return (
     <DataContext.Provider value={{
@@ -158,7 +159,7 @@ export function DataProvider({ children }) {
       createPage, editPage, removePage,
       createCommission, editCommission, removeCommission,
       createLeave, approveLeave, rejectLeave, removeLeave,
-      getCommStats, getUserName, getPageName,
+      getCommStats, getUserName, getPageName, getPage,
     }}>
       {children}
     </DataContext.Provider>
