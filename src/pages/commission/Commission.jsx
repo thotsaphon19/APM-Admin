@@ -72,8 +72,10 @@ export default function Commission() {
   // backend import
   const backendFileRef = useRef(null)
   const [backendPreview,  setBackendPreview]  = useState(null)
-  const [compareResult,   setCompareResult]   = useState(null) // null | []
+  const [compareResult,   setCompareResult]   = useState(null)
   const [compareDate,     setCompareDate]     = useState(today)
+  const [compareMode,     setCompareMode]     = useState('day')  // day | week | month
+  const [compareMonth,    setCompareMonth]    = useState(today.slice(0,7))
 
   const admins  = users.filter(u => ['admin','head_admin'].includes(u.role))
   const myPages = isAdmin ? pages.filter(p => p.assignedTo?.includes(myUid) && p.status==='active') : pages
@@ -261,14 +263,27 @@ export default function Commission() {
   // ── Compare: เพจของฉัน vs Backend ─────────────────
   const handleCompare = (date) => {
     const d = date || compareDate
-    // ดึงเพจที่แอดมินคนนี้รับผิดชอบ
+    const m = compareMonth
+
+    // กำหนด date range ตาม mode
+    let dateFilter
+    if (compareMode === 'day') {
+      dateFilter = c => c.date === d
+    } else if (compareMode === 'week') {
+      const dt = new Date(d)
+      const day = dt.getDay()
+      const mon = new Date(dt); mon.setDate(dt.getDate() - (day===0?6:day-1))
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+      const monStr = mon.toISOString().slice(0,10)
+      const sunStr = sun.toISOString().slice(0,10)
+      dateFilter = c => c.date >= monStr && c.date <= sunStr
+    } else if (compareMode === 'month') {
+      dateFilter = c => c.date?.startsWith(m)
+    }
+
     const myPageIds = pages.filter(p => p.assignedTo?.includes(myUid)).map(p => p.id)
-    // ดึง commission ที่ลงในวันนั้น
-    const myDayComms = commissions.filter(c =>
-      c.date === d && (isAdmin ? myIds.includes(c.adminId) : true)
-    )
-    // ดึง backend ของเพจที่เกี่ยวข้อง
-    const dayBackend = backendOrders.filter(b => b.date === d)
+    const myDayComms = commissions.filter(c => dateFilter(c) && (isAdmin ? myIds.includes(c.adminId) : true))
+    const dayBackend = backendOrders.filter(b => dateFilter(b))
 
     // สร้าง compare result ต่อเพจ
     const pageSet = [...new Set([
@@ -1478,11 +1493,41 @@ export default function Commission() {
                 🔍 เปรียบเทียบ: เพจของฉัน vs Backend
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {/* Mode selector */}
                 <div>
-                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>เลือกวันที่</div>
-                  <input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)}
-                    style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>ช่วงเวลา</div>
+                  <div style={{ display:'flex', gap:5 }}>
+                    {[{v:'day',l:'📅 รายวัน'},{v:'week',l:'📆 สัปดาห์'},{v:'month',l:'🗓️ รายเดือน'}].map(m=>(
+                      <button key={m.v} onClick={()=>setCompareMode(m.v)}
+                        style={{ flex:1, background:compareMode===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${compareMode===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:8, padding:'6px 4px', cursor:'pointer', fontSize:11.5, fontWeight:700, color:compareMode===m.v?'#fff':'#6b7280', fontFamily:'inherit' }}>
+                        {m.l}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Date/Week/Month picker */}
+                {compareMode !== 'month' && (
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>
+                      {compareMode==='week' ? 'เลือกวันในสัปดาห์' : 'วันที่'}
+                    </div>
+                    <input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)}
+                      style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                    {compareMode==='week' && (
+                      <div style={{ fontSize:11, color:'#9ca3af', marginTop:3 }}>ระบบจะดึงข้อมูลทั้งสัปดาห์ที่วันนี้อยู่ (จ–อา)</div>
+                    )}
+                  </div>
+                )}
+                {compareMode === 'month' && (
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>เดือน</div>
+                    <input type="month" value={compareMonth} onChange={e=>setCompareMonth(e.target.value)}
+                      style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                  </div>
+                )}
+
+                {/* Page info */}
                 <div style={{ fontSize:12, color:'#6b7280', background:'#fff', borderRadius:9, padding:'8px 12px', border:'1px solid #e0e7ff' }}>
                   เพจที่รับผิดชอบ: <strong style={{ color:'#4338ca' }}>
                     {pages.filter(p=>p.assignedTo?.includes(myUid)).length > 0
@@ -1490,6 +1535,7 @@ export default function Commission() {
                       : 'ทุกเพจ (superadmin/head)'}
                   </strong>
                 </div>
+
                 <button onClick={()=>handleCompare(compareDate)}
                   style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', border:'none', borderRadius:10, padding:'10px 0', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:7, boxShadow:'0 4px 12px rgba(99,102,241,.25)' }}>
                   🔍 เปรียบเทียบเลย
@@ -1509,7 +1555,7 @@ export default function Commission() {
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                 <div style={{ fontSize:16, fontWeight:900, color:'#1e1b4b' }}>
-                  📊 ผลเปรียบเทียบ — {compareDate}
+                  📊 ผลเปรียบเทียบ — {compareMode==='month'?compareMonth:compareMode==='week'?`สัปดาห์ที่มี ${compareDate}`:compareDate}
                 </div>
                 {/* Summary badges */}
                 {[
