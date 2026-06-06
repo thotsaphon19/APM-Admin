@@ -41,6 +41,8 @@ export default function Commission() {
   const [tab,        setTab]        = useState('orders') // orders | backend | cancelled | analysis
   const [filters,    setFilters]    = useState({ date:today, month:'', adminId:'', pageId:'' })
   const [search,     setSearch]     = useState('')
+  const [analysisMode,  setAnalysisMode]  = useState('day')   // day | month
+  const [analysisMonth, setAnalysisMonth] = useState(today.slice(0,7))
   // ── Summary state ──────────────────────────────
   const [sumMode,    setSumMode]    = useState('month') // day|week|month|year
   const [sumDate,    setSumDate]    = useState(today)
@@ -99,12 +101,31 @@ export default function Commission() {
   // ── analysis: compute full enriched commissions ───
   const analysisDate = filters.date || today
   const analysis = useMemo(() => {
+    if (analysisMode === 'month') {
+      // Month mode: คำนวณทุกวันในเดือน แล้วรวมกัน
+      const monthComms   = commissions.filter(c => c.date?.startsWith(analysisMonth))
+      const monthBackend = backendOrders.filter(b => b.date?.startsWith(analysisMonth))
+      const monthCancel  = cancelledOrders.filter(c => c.originalDate?.startsWith(analysisMonth))
+      if (!monthComms.length) return []
+      // Group by date แล้วคำนวณแต่ละวัน
+      const dates = [...new Set(monthComms.map(c=>c.date))].sort()
+      const allResults = []
+      dates.forEach(date => {
+        const dc = monthComms.filter(c=>c.date===date)
+        const db = monthBackend.filter(b=>b.date===date)
+        const dx = monthCancel.filter(c=>c.originalDate===date)
+        const res = computeDailyCommissions(dc, db, dx, commRates.manualRate||5, commRates.aiRate||2)
+        allResults.push(...res)
+      })
+      return allResults
+    }
+    // Day mode (default)
     const dayComms   = commissions.filter(c => c.date === analysisDate)
     const dayBackend = backendOrders.filter(b => b.date === analysisDate)
     const dayCancel  = cancelledOrders.filter(c => c.originalDate === analysisDate)
     if (!dayComms.length) return []
     return computeDailyCommissions(dayComms, dayBackend, dayCancel, commRates.manualRate||5, commRates.aiRate||2)
-  }, [commissions, backendOrders, cancelledOrders, analysisDate, commRates])
+  }, [commissions, backendOrders, cancelledOrders, analysisDate, analysisMonth, analysisMode, commRates])
 
   // ── totals ────────────────────────────────────────
   const totals = useMemo(() => filtered.reduce((a,c) => ({
@@ -904,6 +925,137 @@ export default function Commission() {
       {/* ══════════ TAB: ANALYSIS (คำนวณ) ══════════ */}
       {tab==='analysis' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+
+          {/* ── Mode Selector ── */}
+          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:14, padding:'14px 18px', display:'flex', flexWrap:'wrap', alignItems:'flex-end', gap:14 }}>
+            {/* Day / Month toggle */}
+            <div>
+              <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>โหมด</div>
+              <div style={{ display:'flex', gap:6 }}>
+                {[{v:'day',l:'📅 รายวัน'},{v:'month',l:'🗓️ รายเดือน'}].map(m=>(
+                  <button key={m.v} onClick={()=>setAnalysisMode(m.v)}
+                    style={{ background:analysisMode===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${analysisMode===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:13, fontWeight:700, color:analysisMode===m.v?'#fff':'#6b7280', fontFamily:'inherit' }}>
+                    {m.l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Date/Month picker */}
+            {analysisMode === 'day' && (
+              <div>
+                <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>วันที่</div>
+                <input type="date" value={analysisDate!==today?analysisDate:filters.date||today}
+                  onChange={e=>setFilters(p=>({...p,date:e.target.value}))}
+                  style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+              </div>
+            )}
+            {analysisMode === 'month' && (
+              <div>
+                <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:7 }}>เดือน</div>
+                <input type="month" value={analysisMonth} onChange={e=>setAnalysisMonth(e.target.value)}
+                  style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+              </div>
+            )}
+            {/* Summary badge */}
+            <div style={{ marginLeft:'auto', background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'1.5px solid #c7d2fe', borderRadius:10, padding:'8px 16px', textAlign:'center' }}>
+              <div style={{ fontSize:11, color:'#6b7280', fontWeight:700, marginBottom:2 }}>รายการ</div>
+              <div style={{ fontSize:18, fontWeight:900, color:'#4338ca' }}>{analysis.length}</div>
+            </div>
+          </div>
+
+          {/* ── Monthly Grand Summary ── */}
+          {analysisMode === 'month' && analysis.length > 0 && (
+            <div style={{ background:'linear-gradient(135deg,#1e1b4b,#312e81)', borderRadius:18, padding:'20px 24px' }}>
+              <div style={{ fontSize:15, fontWeight:900, color:'#fff', marginBottom:16 }}>
+                📅 สรุปรายเดือน {analysisMonth} · {analysis.length} รายการ
+              </div>
+              {/* KPI */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(145px,1fr))', gap:10, marginBottom:16 }}>
+                {(() => {
+                  const totalNet    = analysis.reduce((a,r)=>a+(r.netTotal||r.adjustedTotal||r.total||0),0)
+                  const totalManual = analysis.reduce((a,r)=>a+(r.manualOrders||0),0)
+                  const totalAi     = analysis.reduce((a,r)=>a+(r.aiOrders||0),0)
+                  const totalLost   = analysis.reduce((a,r)=>a+(r.lostDeduction||0),0)
+                  const totalCancel = analysis.reduce((a,r)=>a+(r.cancelDeduction||0),0)
+                  const adminSet    = new Set(analysis.map(r=>r.adminId))
+                  const pageSet     = new Set(analysis.map(r=>r.pageId))
+                  const dates       = new Set(analysis.map(r=>r.date))
+                  return [
+                    { e:'💰', l:'ค่าคอมสุทธิรวม',   v:`฿${Math.round(totalNet).toLocaleString()}`,      c:'#fde68a' },
+                    { e:'🖐',  l:'ตอบมือรวม',         v:totalManual.toLocaleString()+'  บ้าน',            c:'#c4b5fd' },
+                    { e:'🤖', l:'AI รวม',             v:totalAi.toLocaleString()+' บ้าน',                c:'#86efac' },
+                    { e:'📦', l:'ออเดอร์รวม',         v:(totalManual+totalAi).toLocaleString()+' บ้าน', c:'#93c5fd' },
+                    { e:'📉', l:'หักออเดอร์หาย',      v:`฿${Math.round(totalLost).toLocaleString()}`,    c:'#fca5a5' },
+                    { e:'❌', l:'หักยกเลิก',           v:`฿${Math.round(totalCancel).toLocaleString()}`, c:'#fda4af' },
+                    { e:'👥', l:'แอดมิน',             v:`${adminSet.size} คน`,                           c:'#fdba74' },
+                    { e:'📅', l:'วันที่มีข้อมูล',       v:`${dates.size} วัน`,                             c:'#99f6e4' },
+                  ].map((k,i)=>(
+                    <div key={i} style={{ background:'rgba(255,255,255,.1)', borderRadius:12, padding:'11px 14px', border:'1px solid rgba(255,255,255,.1)' }}>
+                      <div style={{ fontSize:20, marginBottom:4 }}>{k.e}</div>
+                      <div style={{ fontSize:16, fontWeight:900, color:k.c }}>{k.v}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.5)', marginTop:2 }}>{k.l}</div>
+                    </div>
+                  ))
+                })()}
+              </div>
+              {/* Per-admin monthly table */}
+              {canSeeAll && (
+                <div style={{ background:'rgba(255,255,255,.07)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ fontSize:12, fontWeight:800, color:'rgba(255,255,255,.6)', padding:'8px 14px', borderBottom:'1px solid rgba(255,255,255,.1)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                    สรุปรายแอดมิน — ทั้งเดือน
+                  </div>
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', minWidth:650 }}>
+                      <thead>
+                        <tr style={{ borderBottom:'1px solid rgba(255,255,255,.1)' }}>
+                          {['#','แอดมิน','วัน','มือ','AI','รวม','หัก','สุทธิ','เฉลี่ย/วัน'].map((h,hi)=>(
+                            <th key={hi} style={{ padding:'8px 12px', textAlign:hi<=1?'left':'right', fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const adminMap = {}
+                          analysis.forEach(r => {
+                            if (!adminMap[r.adminId]) adminMap[r.adminId] = { manual:0,ai:0,net:0,deduct:0,days:new Set() }
+                            const am = adminMap[r.adminId]
+                            am.manual += r.manualOrders||0
+                            am.ai     += r.aiOrders||0
+                            am.net    += r.netTotal||r.adjustedTotal||r.total||0
+                            am.deduct += (r.lostDeduction||0)+(r.cancelDeduction||0)
+                            if (r.date) am.days.add(r.date)
+                          })
+                          return Object.entries(adminMap)
+                            .sort((a,b)=>b[1].net-a[1].net)
+                            .map(([uid,r],i)=>(
+                              <tr key={uid} style={{ borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+                                <td style={{ padding:'8px 12px', color:'rgba(255,255,255,.5)', fontSize:12 }}>{i+1}</td>
+                                <td style={{ padding:'8px 12px' }}>
+                                  <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                                    <div style={{ width:24, height:24, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, color:'#fff' }}>
+                                      {getUserName(uid).slice(0,2)}
+                                    </div>
+                                    <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{getUserName(uid)}</span>
+                                  </div>
+                                </td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', color:'rgba(255,255,255,.5)', fontSize:12 }}>{r.days.size}</td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', color:'#c4b5fd', fontWeight:700 }}>{r.manual.toLocaleString()}</td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', color:'#86efac', fontWeight:700 }}>{r.ai.toLocaleString()}</td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', color:'#fff', fontWeight:800 }}>{(r.manual+r.ai).toLocaleString()}</td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', color:'#fca5a5', fontSize:12 }}>{r.deduct>0?`฿${Math.round(r.deduct).toLocaleString()}`:'—'}</td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', fontSize:15, fontWeight:900, color:'#fde68a' }}>฿{Math.round(r.net).toLocaleString()}</td>
+                                <td style={{ padding:'8px 12px', textAlign:'right', color:'#86efac', fontSize:12, fontWeight:700 }}>฿{r.days.size>0?Math.round(r.net/r.days.size).toLocaleString():'—'}</td>
+                              </tr>
+                            ))
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:14, padding:'12px 18px', fontSize:13.5, color:'#92400e', fontWeight:600, display:'flex', alignItems:'flex-start', gap:8 }}>
             <AlertTriangle size={16} style={{ flexShrink:0, marginTop:1 }}/>
             <div>
@@ -929,24 +1081,45 @@ export default function Commission() {
                     </tr>
                   </thead>
                   <tbody>
-                    {analysis.map((r,i)=>(
+                    {analysis.map((r,i)=>{
+                      // หาเพื่อนร่วมเพจวันเดียวกัน
+                      const peers = analysis.filter(x => x.pageId===r.pageId && x.date===r.date && x.adminId!==r.adminId)
+                      return (
                       <tr key={i} style={{ borderBottom:'1px solid #f0f4ff', background:r.hasDeduction?'#fffafb':'transparent' }}>
                         <td style={{ padding:'11px 13px' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:7 }}>
                             <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, flexShrink:0 }}>
                               {getUserName(r.adminId).slice(0,2)}
                             </div>
-                            <span style={{ fontSize:13, fontWeight:600 }}>{getUserName(r.adminId)}</span>
+                            <div>
+                              <span style={{ fontSize:13, fontWeight:600 }}>{getUserName(r.adminId)}</span>
+                              {/* เพื่อนร่วมเพจ */}
+                              {peers.length > 0 && (
+                                <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
+                                  {peers.map((p,pi)=>(
+                                    <span key={pi} style={{ background:'#eef2ff', color:'#4338ca', border:'1px solid #c7d2fe', borderRadius:99, padding:'1px 7px', fontSize:10.5, fontWeight:700, display:'inline-flex', alignItems:'center', gap:3 }}>
+                                      <span style={{ fontSize:9 }}>👥</span> {getUserName(p.adminId)}
+                                      <span style={{ fontSize:9, color:'#6b7280' }}>({Math.round((p.shareRatio||0)*100)}%)</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td style={{ padding:'11px 13px' }}><PageBadge page={getPage(r.pageId)} size='sm'/></td>
                         <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:'#4338ca' }}>฿{(r.total||0).toLocaleString()}</td>
                         <td style={{ textAlign:'center', fontSize:13, color:'#6b7280' }}>
                           {r.pagePeers > 1
-                            ? <span style={{ background:'#eef2ff', color:'#4338ca', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:700 }}>
-                                {Math.round((r.shareRatio||1)*100)}% ({r.pagePeers} คน)
-                              </span>
-                            : <span style={{ color:'#9ca3af', fontSize:12 }}>—</span>
+                            ? <div>
+                                <span style={{ background:'#eef2ff', color:'#4338ca', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:700 }}>
+                                  {Math.round((r.shareRatio||1)*100)}%
+                                </span>
+                                <div style={{ fontSize:10.5, color:'#6b7280', marginTop:3 }}>
+                                  จาก {r.pagePeers} คน · รวม {r.pageTotal?`฿${Math.round(r.pageTotal).toLocaleString()}`:''}
+                                </div>
+                              </div>
+                            : <span style={{ color:'#9ca3af', fontSize:12 }}>100%</span>
                           }
                         </td>
                         <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:(r.lostDeduction||0)>0?'#be123c':'#9ca3af' }}>
@@ -967,7 +1140,8 @@ export default function Commission() {
                           }
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                     <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderTop:'2px solid #c7d2fe' }}>
                       <td colSpan={6} style={{ padding:'11px 13px', fontSize:12, fontWeight:800, color:'#4338ca' }}>รวมทั้งหมด</td>
                       <td style={{ textAlign:'center', padding:'11px 13px', fontSize:18, fontWeight:900, color:'#4338ca' }}>
