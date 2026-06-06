@@ -3,6 +3,7 @@ import { format, addDays, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useAuth } from '../../contexts/AuthContext'
 import { useData } from '../../contexts/DataContext'
+import PageBadge from '../../components/ui/PageBadge'
 import { useNotify } from '../../hooks/useNotify'
 import { Edit2, Trash2, ChevronDown, ChevronUp, Plus, X, RefreshCw, Upload, AlertTriangle, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -22,7 +23,7 @@ export default function Commission() {
     createCommission, editCommission, removeCommission,
     backendOrders, importBackendOrders,
     cancelledOrders, addCancel, removeCancel,
-    getUserName, getPageName,
+    getUserName, getPageName, getPage,
   } = useData()
   const { notifyCommission } = useNotify()
 
@@ -728,7 +729,7 @@ export default function Commission() {
                             </div>
                           </td>
                           <td style={{ padding:'10px 12px', fontSize:13, color:'#4b5563', maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            {getPageName(c.pageId)}
+                            {getPage(c.pageId) ? <PageBadge page={getPage(c.pageId)} size='sm'/> : <span style={{color:'#9ca3af'}}>—</span>}
                           </td>
                           <td style={{ padding:'10px 8px' }}>
                             <span style={{ background:sh.bg, color:sh.color, borderRadius:99, padding:'2px 8px', fontSize:11.5, fontWeight:700 }}>
@@ -837,7 +838,7 @@ export default function Commission() {
                             <span style={{ fontSize:13, fontWeight:600 }}>{getUserName(r.adminId)}</span>
                           </div>
                         </td>
-                        <td style={{ padding:'11px 13px', fontSize:13, color:'#4b5563' }}>{getPageName(r.pageId)}</td>
+                        <td style={{ padding:'11px 13px' }}><PageBadge page={getPage(r.pageId)} size='sm'/></td>
                         <td style={{ textAlign:'center', fontSize:13, fontWeight:700, color:'#4338ca' }}>฿{(r.total||0).toLocaleString()}</td>
                         <td style={{ textAlign:'center', fontSize:13, color:'#6b7280' }}>
                           {r.pagePeers > 1
@@ -924,7 +925,7 @@ export default function Commission() {
                   {myComm.slice().sort((a,b)=>b.date?.localeCompare(a.date||'')).map((c,i)=>(
                     <tr key={c.id||i} style={{ borderBottom:'1px solid #f0f4ff' }}>
                       <td style={{ padding:'10px 12px', fontWeight:700, color:'#1e1b4b', whiteSpace:'nowrap' }}>{c.date}</td>
-                      <td style={{ padding:'10px 12px', color:'#4338ca', fontWeight:600 }}>{getPageName(c.pageId)}</td>
+                      <td style={{ padding:'10px 12px', color:'#4338ca', fontWeight:600 }}>{getPage(c.pageId) ? <PageBadge page={getPage(c.pageId)} size='sm'/> : <span style={{color:'#9ca3af'}}>—</span>}</td>
                       <td style={{ padding:'10px 12px' }}>
                         <span style={{ background:c.shift==='night'?'#eef2ff':'#fffbeb', color:c.shift==='night'?'#4338ca':'#b45309', border:`1px solid ${c.shift==='night'?'#c7d2fe':'#fde68a'}`, borderRadius:99, padding:'2px 8px', fontSize:11.5, fontWeight:700 }}>
                           {c.shift==='night'?'🌙 ดึก':'☀️ กลางวัน'}
@@ -1224,7 +1225,7 @@ export default function Commission() {
                     <div style={{ background:bgMap[r.status], padding:'12px 18px', borderBottom:`1px solid ${bdMap[r.status]}`, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b', display:'flex', alignItems:'center', gap:8 }}>
-                          📄 {getPageName(r.pageId)}
+                          
                           <span style={{ background:bgMap[r.status], color:clMap[r.status], border:`1.5px solid ${bdMap[r.status]}`, borderRadius:99, padding:'2px 10px', fontSize:12, fontWeight:700 }}>
                             {iconMap[r.status]} {labelMap[r.status]}
                           </span>
@@ -1421,7 +1422,7 @@ export default function Commission() {
                       {/* Page header */}
                       <div style={{ background:'linear-gradient(135deg,#fef3c7,#fffbeb)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
                         <div style={{ flex:1 }}>
-                          <div style={{ fontSize:15, fontWeight:900, color:'#92400e' }}>📄 {getPageName(g.pageId)}</div>
+                          <div style={{ fontSize:15, fontWeight:900, color:'#92400e' }}><PageBadge page={getPage(g.pageId)} size='md'/></div>
                           <div style={{ fontSize:12, color:'#b45309', marginTop:2 }}>{g.date} · {g.count} คนร่วม</div>
                         </div>
                         <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
