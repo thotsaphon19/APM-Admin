@@ -1165,6 +1165,17 @@ export default function Commission() {
 
           {/* KPI ของฉัน */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 }}>
+            {/* Month filter bar */}
+            <div style={{ display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end', marginBottom:4 }}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>กรองเดือน</div>
+                <input type="month" value={filters.month||today.slice(0,7)} onChange={e=>setFilters(p=>({...p,month:e.target.value}))}
+                  style={{ padding:'7px 11px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13, color:'#4338ca', fontFamily:'inherit' }}/>
+              </div>
+              <div style={{ fontSize:13, color:'#6b7280', paddingBottom:8 }}>
+                แสดงข้อมูลเดือน <strong style={{color:'#4338ca'}}>{filters.month||today.slice(0,7)}</strong>
+              </div>
+            </div>
             {[
               { e:'💎', l:'ค่าคอมวันนี้',   v:`฿${myTodayTotal.toLocaleString()}`, c:'#4338ca', bg:'linear-gradient(135deg,#eef2ff,#e0e7ff)', b:'#c7d2fe' },
               { e:'📦', l:'ออเดอร์วันนี้',   v:myTotalOrders, c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
@@ -1870,20 +1881,58 @@ export default function Commission() {
             <div style={{ background:'linear-gradient(135deg,#fff1f2,#ffe4e6)', padding:'12px 18px', borderBottom:'1.5px solid #fecdd3', fontSize:14, fontWeight:800, color:'#be123c' }}>
               ❌ ออเดอร์ยกเลิกทั้งหมด ({cancelledOrders.length} รายการ)
             </div>
-            <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                <thead><tr style={{ borderBottom:'1.5px solid #fecdd3' }}>
-                  {['วันที่ของออเดอร์','เพจ','จำนวน','ยอดหัก (฿)','เหตุผล',''].map((h,i)=>(
-                    <th key={i} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {cancelledOrders.length===0
-                    ?<tr><td colSpan={6} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีรายการยกเลิก</td></tr>
-                    :cancelledOrders.map(c=>(
+            {/* ── Month filter + summary ── */}
+            {(() => {
+              const filtCancels = filters.month
+                ? cancelledOrders.filter(c => c.originalDate?.startsWith(filters.month) || c.date?.startsWith(filters.month))
+                : cancelledOrders
+              const totalQty    = filtCancels.reduce((a,c)=>a+(c.qty||c.quantity||1),0)
+              const totalAmount = filtCancels.reduce((a,c)=>a+(c.amount||0),0)
+              return (
+                <>
+                  {/* Filter bar */}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:10, alignItems:'center', marginBottom:4 }}>
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>กรองเดือน</div>
+                      <input type="month" value={filters.month||''} onChange={e=>setFilters(p=>({...p,month:e.target.value}))}
+                        style={{ padding:'7px 11px', borderRadius:9, border:'1.5px solid #fca5a5', background:'#fff', fontSize:13, color:'#be123c', fontFamily:'inherit' }}/>
+                    </div>
+                    {filters.month && (
+                      <button onClick={()=>setFilters(p=>({...p,month:''}))}
+                        style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:9, padding:'7px 12px', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#be123c', fontFamily:'inherit', marginTop:20 }}>
+                        ✕ ล้าง
+                      </button>
+                    )}
+                    {/* KPI */}
+                    {filtCancels.length > 0 && (
+                      <div style={{ marginLeft:'auto', display:'flex', gap:10 }}>
+                        {[
+                          { l:'รายการ', v:`${filtCancels.length} รายการ`, c:'#be123c', bg:'#fff1f2', b:'#fecdd3' },
+                          { l:'บ้านรวม', v:`${totalQty} บ้าน`, c:'#b45309', bg:'#fffbeb', b:'#fde68a' },
+                          { l:'หักรวม', v:`฿${totalAmount.toLocaleString()}`, c:'#7c3aed', bg:'#f5f3ff', b:'#ddd6fe' },
+                        ].map((k,i)=>(
+                          <div key={i} style={{ background:k.bg, border:`1.5px solid ${k.b}`, borderRadius:11, padding:'8px 14px', textAlign:'center' }}>
+                            <div style={{ fontSize:13, fontWeight:900, color:k.c }}>{k.v}</div>
+                            <div style={{ fontSize:10.5, color:'#6b7280', marginTop:2 }}>{k.l}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                      <thead><tr style={{ borderBottom:'1.5px solid #fecdd3' }}>
+                        {['วันที่ของออเดอร์','เพจ','จำนวน','ยอดหัก (฿)','เหตุผล',''].map((h,i)=>(
+                          <th key={i} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#be123c', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {filtCancels.length===0
+                          ?<tr><td colSpan={6} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีรายการยกเลิก{filters.month?' ในเดือนนี้':''}</td></tr>
+                          :filtCancels.map(c=>(
                       <tr key={c.id} style={{ borderBottom:'1px solid #fff1f2' }}>
                         <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{c.originalDate}</td>
-                        <td style={{ padding:'10px 14px', fontSize:13.5, fontWeight:600 }}>{getPageName(c.pageId)||c.pageId}</td>
+                        <td style={{ padding:'10px 14px' }}><PageBadge page={getPage(c.pageId)} size='sm'/></td>
                         <td style={{ padding:'10px 14px', fontSize:14, fontWeight:800, color:'#be123c' }}>{c.qty}</td>
                         <td style={{ padding:'10px 14px', fontSize:14, fontWeight:900, color:'#be123c' }}>฿{(c.amount||0).toLocaleString()}</td>
                         <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{c.reason||'—'}</td>
@@ -1895,11 +1944,13 @@ export default function Commission() {
                           )}
                         </td>
                       </tr>
-                    ))
-                  }
-                </tbody>
-              </table>
-            </div>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
