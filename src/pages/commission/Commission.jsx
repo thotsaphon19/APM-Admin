@@ -489,6 +489,107 @@ export default function Commission() {
         </div>
       </div>
 
+      {/* ══ Monthly Summary Banner ══════════════════════ */}
+      {filters.month && tab === 'orders' && (
+        <div style={{ background:'linear-gradient(135deg,#1e1b4b,#312e81)', borderRadius:18, padding:'20px 24px' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:16 }}>
+            <div style={{ fontSize:15, fontWeight:900, color:'#fff', display:'flex', alignItems:'center', gap:8 }}>
+              📅 สรุปเดือน {filters.month}
+              <span style={{ background:'rgba(255,255,255,.15)', borderRadius:99, padding:'2px 10px', fontSize:12.5 }}>{filtered.length} รายการ</span>
+            </div>
+            <button onClick={()=>setFilters(p=>({...p,month:''}))}
+              style={{ background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.2)', borderRadius:9, padding:'5px 12px', cursor:'pointer', fontSize:12, color:'#fff', fontFamily:'inherit' }}>
+              ✕ ล้าง
+            </button>
+          </div>
+
+          {/* KPI row */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10, marginBottom:16 }}>
+            {(() => {
+              const totalComm  = filtered.reduce((a,c)=>a+(c.total||(c.manualTotal||0)+(c.aiTotal||0)||((parseInt(c.manualOrders)||0)*(c.manualRate||commRates.manualRate||5)+(parseInt(c.aiOrders)||0)*(c.aiRate||commRates.aiRate||2))),0)
+              const totalManual= filtered.reduce((a,c)=>a+(parseInt(c.manualOrders)||0),0)
+              const totalAi    = filtered.reduce((a,c)=>a+(parseInt(c.aiOrders)||0),0)
+              const totalCancel= filtered.reduce((a,c)=>a+(c.cancelOrders||0),0)
+              const totalPend  = filtered.reduce((a,c)=>a+(c.pendingOrders||0),0)
+              const adminSet   = new Set(filtered.map(c=>c.adminId))
+              const pageSet    = new Set(filtered.map(c=>c.pageId))
+              return [
+                { e:'💰', l:'ค่าคอมรวม',   v:`฿${Math.round(totalComm).toLocaleString()}`,  c:'#fde68a' },
+                { e:'🖐',  l:'ตอบมือ',      v:totalManual.toLocaleString(),                   c:'#c4b5fd' },
+                { e:'🤖', l:'AI',           v:totalAi.toLocaleString(),                       c:'#86efac' },
+                { e:'📦', l:'รวมออเดอร์',   v:(totalManual+totalAi).toLocaleString(),         c:'#93c5fd' },
+                { e:'🫟', l:'กดยอดไม่ได้', v:totalPend.toLocaleString(),                     c:'#e9d5ff' },
+                { e:'❌', l:'ยกเลิก',       v:totalCancel.toLocaleString(),                   c:'#fca5a5' },
+                { e:'👥', l:'แอดมิน',       v:`${adminSet.size} คน`,                          c:'#fdba74' },
+                { e:'📄', l:'เพจ',          v:`${pageSet.size} เพจ`,                          c:'#99f6e4' },
+              ].map((k,i)=>(
+                <div key={i} style={{ background:'rgba(255,255,255,.1)', borderRadius:12, padding:'11px 14px', border:'1px solid rgba(255,255,255,.1)' }}>
+                  <div style={{ fontSize:20, marginBottom:5 }}>{k.e}</div>
+                  <div style={{ fontSize:17, fontWeight:900, color:k.c }}>{k.v}</div>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,.55)', marginTop:2 }}>{k.l}</div>
+                </div>
+              ))
+            })()}
+          </div>
+
+          {/* Per-admin summary */}
+          {canSeeAll && (
+            <div style={{ background:'rgba(255,255,255,.07)', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ fontSize:12, fontWeight:800, color:'rgba(255,255,255,.6)', padding:'8px 14px', borderBottom:'1px solid rgba(255,255,255,.1)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                สรุปรายแอดมิน
+              </div>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:600 }}>
+                  <thead>
+                    <tr style={{ borderBottom:'1px solid rgba(255,255,255,.1)' }}>
+                      {['แอดมิน','วันที่ลง','มือ','AI','รวม','ค่าคอม','เฉลี่ย/วัน'].map((h,i)=>(
+                        <th key={i} style={{ padding:'8px 12px', textAlign:i===0?'left':'right', fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const adminMap = {}
+                      filtered.forEach(c => {
+                        const uid = c.adminId
+                        if (!adminMap[uid]) adminMap[uid] = { manual:0, ai:0, total:0, days:new Set() }
+                        const m = parseInt(c.manualOrders)||0
+                        const a = parseInt(c.aiOrders)||0
+                        const comm = c.total||(c.manualTotal||0)+(c.aiTotal||0)||(m*(c.manualRate||commRates.manualRate||5)+a*(c.aiRate||commRates.aiRate||2))
+                        adminMap[uid].manual += m
+                        adminMap[uid].ai += a
+                        adminMap[uid].total += comm
+                        if (c.date) adminMap[uid].days.add(c.date)
+                      })
+                      return Object.entries(adminMap)
+                        .sort((a,b)=>b[1].total-a[1].total)
+                        .map(([uid,r],i)=>(
+                          <tr key={uid} style={{ borderBottom:'1px solid rgba(255,255,255,.06)', background:i%2===0?'transparent':'rgba(255,255,255,.03)' }}>
+                            <td style={{ padding:'9px 12px' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                                <div style={{ width:26, height:26, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, color:'#fff', flexShrink:0 }}>
+                                  {getUserName(uid).slice(0,2)}
+                                </div>
+                                <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{getUserName(uid)}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding:'9px 12px', textAlign:'right', color:'rgba(255,255,255,.5)', fontSize:12 }}>{r.days.size} วัน</td>
+                            <td style={{ padding:'9px 12px', textAlign:'right', fontWeight:700, color:'#c4b5fd' }}>{r.manual.toLocaleString()}</td>
+                            <td style={{ padding:'9px 12px', textAlign:'right', fontWeight:700, color:'#86efac' }}>{r.ai.toLocaleString()}</td>
+                            <td style={{ padding:'9px 12px', textAlign:'right', fontWeight:800, color:'#fff' }}>{(r.manual+r.ai).toLocaleString()}</td>
+                            <td style={{ padding:'9px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#fde68a' }}>฿{Math.round(r.total).toLocaleString()}</td>
+                            <td style={{ padding:'9px 12px', textAlign:'right', fontSize:12, color:'#86efac', fontWeight:700 }}>฿{r.days.size>0?Math.round(r.total/r.days.size).toLocaleString():'—'}</td>
+                          </tr>
+                        ))
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ══════════ TAB: ORDERS ══════════ */}
       {tab === 'orders' && (
         <>
