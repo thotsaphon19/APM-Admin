@@ -410,12 +410,13 @@ export default function Commission() {
 
     // สรุปรวม
     const grand = rows.reduce((a,r)=>({
-      manual:  a.manual+r.manual,
-      ai:      a.ai+r.ai,
-      orders:  a.orders+r.orders,
-      total:   a.total+r.total,
+      manual:     a.manual+r.manual,
+      ai:         a.ai+r.ai,
+      orders:     a.orders+r.orders,
+      total:      a.total+r.total,
+      proOrders:  a.proOrders+(r.proOrders||0),
       saleAmount: a.saleAmount+(r.saleAmount||0),
-    }),{manual:0,ai:0,orders:0,total:0,saleAmount:0})
+    }),{manual:0,ai:0,orders:0,total:0,proOrders:0,saleAmount:0})
 
     return { rows, grand, byDateArr, count: base.length }
   }, [commissions, sumMode, sumDate, sumMonth, effectiveSumMonth, sumYear, myIds, canSeeAll, commRates, filters])
@@ -1021,6 +1022,10 @@ export default function Commission() {
                     { e:'🤖', l:'AI รวม',             v:totalAi.toLocaleString()+' บ้าน',                c:'#86efac' },
                     { e:'📦', l:'ออเดอร์รวม',         v:(totalManual+totalAi).toLocaleString()+' บ้าน', c:'#93c5fd' },
                     { e:'📉', l:'หักออเดอร์หาย',      v:`฿${Math.round(totalLost).toLocaleString()}`,    c:'#fca5a5' },
+                    ...(canSeeAll ? [
+                      { e:'🎯', l:'โปรรวม',           v:analysis.reduce((a,r)=>a+(r.proOrders||0),0)+' บ้าน', c:'#86efac' },
+                      { e:'💵', l:'ยอดขายรวม',         v:`฿${Math.round(analysis.reduce((a,r)=>a+(parseFloat(r.saleAmount)||0),0)).toLocaleString()}`, c:'#99f6e4' },
+                    ] : []),
                     { e:'❌', l:'หักยกเลิก',           v:`฿${Math.round(totalCancel).toLocaleString()}`, c:'#fda4af' },
                     { e:'👥', l:'แอดมิน',             v:`${adminSet.size} คน`,                           c:'#fdba74' },
                     { e:'📅', l:'วันที่มีข้อมูล',       v:`${dates.size} วัน`,                             c:'#99f6e4' },
@@ -1393,7 +1398,10 @@ export default function Commission() {
                 <table style={{ width:'100%', borderCollapse:'collapse', minWidth:720 }}>
                   <thead style={{ position:'sticky', top:0 }}>
                     <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderBottom:'2px solid #e0e7ff' }}>
-                      {['#','แอดมิน','วัน','เพจ','🖐 มือ','🤖 AI','📦 รวม','💰 ค่าคอม','เฉลี่ย/วัน'].map((h,hi)=>(
+                      {(canSeeAll
+                          ? ['#','แอดมิน','วัน','เพจ','🖐 มือ','🤖 AI','📦 รวม','🎯 โปร','💵 ยอดขาย','💰 ค่าคอม','เฉลี่ย/วัน']
+                          : ['#','แอดมิน','วัน','เพจ','🖐 มือ','🤖 AI','📦 รวม','💰 ค่าคอม','เฉลี่ย/วัน']
+                        ).map((h,hi)=>(
                         <th key={hi} style={{ padding:'10px 12px', textAlign:hi<=1?'left':'right', fontSize:11, fontWeight:800, color:'#6366f1', whiteSpace:'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -1415,6 +1423,10 @@ export default function Commission() {
                         <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#7c3aed' }}>{r.manual.toLocaleString()}</td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#0f766e' }}>{r.ai.toLocaleString()}</td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:800, color:'#1e1b4b' }}>{r.orders.toLocaleString()}</td>
+                        {canSeeAll && <>
+                          <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#059669' }}>{r.proOrders>0?r.proOrders.toLocaleString():'—'}</td>
+                          <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#0f766e' }}>{r.saleAmount>0?`฿${Math.round(r.saleAmount).toLocaleString()}`:'—'}</td>
+                        </>}
                         <td style={{ padding:'10px 12px', textAlign:'right', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{Math.round(r.total).toLocaleString()}</td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:700, color:'#059669' }}>฿{r.days>0?Math.round(r.total/r.days).toLocaleString():'—'}</td>
                       </tr>
@@ -1426,6 +1438,14 @@ export default function Commission() {
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#7c3aed' }}>{summaryData.grand.manual.toLocaleString()}</td>
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#0f766e' }}>{summaryData.grand.ai.toLocaleString()}</td>
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>{summaryData.grand.orders.toLocaleString()}</td>
+                      {canSeeAll && <>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:800, color:'#059669' }}>
+                          {summaryData.grand.proOrders>0?summaryData.grand.proOrders.toLocaleString():'—'}
+                        </td>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:800, color:'#0f766e' }}>
+                          {summaryData.grand.saleAmount>0?`฿${Math.round(summaryData.grand.saleAmount).toLocaleString()}`:'—'}
+                        </td>
+                      </>}
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:16, fontWeight:900, color:'#4338ca' }}>฿{Math.round(summaryData.grand.total).toLocaleString()}</td>
                       <td/>
                     </tr>
