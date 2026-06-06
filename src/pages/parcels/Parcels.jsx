@@ -3,6 +3,7 @@ import { format, differenceInDays, parseISO, startOfMonth, endOfMonth } from 'da
 import { th } from 'date-fns/locale'
 import { useAuth } from '../../contexts/AuthContext'
 import { useData } from '../../contexts/DataContext'
+import PageBadge from '../../components/ui/PageBadge'
 import { addDoc, collection } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useNotify } from '../../hooks/useNotify'
@@ -102,7 +103,7 @@ function parseShippingRow(row, headers) {
 
 export default function Parcels() {
   const { profile, isSuperAdmin, canManage } = useAuth()
-  const { pages, parcels, createParcel, editParcel, removeParcel, importParcels } = useData()
+  const { pages, parcels, getPage, createParcel, editParcel, removeParcel, importParcels } = useData()
   const { notifyCustom } = useNotify()
 
   const fileRef     = useRef(null)
@@ -714,7 +715,7 @@ export default function Parcels() {
                             {p.cod>0?<span style={{ fontSize:13, fontWeight:800, color:'#b45309' }}>฿{p.cod.toLocaleString()}</span>:<span style={{ color:'#d1d5db' }}>—</span>}
                           </td>
                           <td style={{ padding:'10px 12px', fontSize:12, color:'#4b5563', maxWidth:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.commBy||'—'}</td>
-                          <td style={{ padding:'10px 12px', fontSize:12, color:'#4338ca', maxWidth:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.channel||pages.find(pg=>pg.id===p.pageId)?.name||'—'}</td>
+                          <td style={{ padding:'10px 12px' }}>{(() => { const pg=pages.find(x=>x.id===p.pageId); if(pg) return <PageBadge page={pg} size='xs'/>; return <span style={{fontSize:12,color:'#4338ca'}}>{p.channel||'—'}</span> })()} </td>
                           <td style={{ padding:'10px 12px', fontSize:12.5, color:'#6b7280', whiteSpace:'nowrap' }}>{p.printDate||p.orderDate||'—'}</td>
                           <td style={{ padding:'10px 12px', fontSize:12.5, color:'#059669', fontWeight:600, whiteSpace:'nowrap' }}>{p.shipDate||'—'}</td>
                           <td style={{ padding:'10px 12px' }}>
