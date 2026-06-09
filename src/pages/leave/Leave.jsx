@@ -360,35 +360,51 @@ export default function Leave() {
             <TrendingUp size={17} style={{ color:'#6366f1' }}/>
             <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b' }}>📊 สรุปวันลาของทีม</div>
           </div>
-          <div style={{ padding:16, display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:10 }}>
+          <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b', padding:'0 4px 4px' }}>🗂️ สถิติวันลารายคน</div>
+          <div style={{ padding:'0 4px 16px', display:'flex', flexDirection:'column', gap:12 }}>
             {admins.map(u => {
               const ul = leaves.filter(l=>!l.deleted&&l.employeeId===u.id)
               const aw = ul.filter(l=>l.status==='approved')
               const pd = ul.filter(l=>l.status==='pending').length
+              const rj = ul.filter(l=>l.status==='rejected').length
               const totalDays = aw.reduce((a,l)=>a+countDays(l.startDate,l.endDate),0)
-              const avatar = u.name?.slice(0,2) || '??'
-              // pick avatar bg color based on name hash
               const colors = ['#6366f1','#8b5cf6','#ec4899','#0284c7','#059669','#d97706']
               const col = colors[(u.name||'').charCodeAt(0)%colors.length]
+              const byType = LEAVE_TYPES.map(lt=>({
+                ...lt,
+                count: aw.filter(l=>l.leaveType===lt.value).length,
+                days:  aw.filter(l=>l.leaveType===lt.value).reduce((a,l)=>a+countDays(l.startDate,l.endDate),0),
+              })).filter(lt=>lt.count>0)
               return (
-                <div key={u.id} style={{ background:'linear-gradient(135deg,#fafbff,#f0f4ff)', border:'1.5px solid #e0e7ff', borderRadius:16, padding:'14px 16px' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:10 }}>
-                    <div style={{ width:38, height:38, borderRadius:'50%', background:`linear-gradient(135deg,${col},${col}cc)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, flexShrink:0 }}>
-                      {avatar}
+                <div key={u.id} style={{ background:'linear-gradient(135deg,#fafbff,#f0f4ff)', border:'1.5px solid #e0e7ff', borderRadius:16, padding:'14px 18px' }}>
+                  {/* header row */}
+                  <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:byType.length>0?12:0 }}>
+                    <div style={{ width:40, height:40, borderRadius:'50%', background:`linear-gradient(135deg,${col},${col}cc)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, flexShrink:0 }}>
+                      {(u.name||'?').slice(0,2)}
                     </div>
-                    <div>
-                      <div style={{ fontSize:13.5, fontWeight:800, color:'#1e1b4b' }}>{u.name}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{u.name}</div>
                       <div style={{ fontSize:11, color:'#9ca3af' }}>{u.role}</div>
                     </div>
+                    <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
+                      <span style={{ background:'#f0fdf4', color:'#059669', border:'1px solid #bbf7d0', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700 }}>
+                        ✅ {aw.length} ครั้ง · {totalDays} วัน
+                      </span>
+                      {pd>0 && <span style={{ background:'#fffbeb', color:'#b45309', border:'1px solid #fde68a', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700 }}>⏳ {pd} รอ</span>}
+                      {rj>0 && <span style={{ background:'#fff1f2', color:'#be123c', border:'1px solid #fecdd3', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700 }}>❌ {rj} ปฏิเสธ</span>}
+                    </div>
                   </div>
-                  <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
-                    <span style={{ background:'#f0fdf4', color:'#059669', border:'1px solid #bbf7d0', borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:700 }}>
-                      ✅ {aw.length} ครั้ง ({totalDays} วัน)
-                    </span>
-                    {pd>0 && <span style={{ background:'#fffbeb', color:'#b45309', border:'1px solid #fde68a', borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:700 }}>
-                      ⏳ {pd} รอ
-                    </span>}
-                  </div>
+                  {/* breakdown by leave type */}
+                  {byType.length>0 && (
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:7, paddingTop:10, borderTop:'1px solid #e0e7ff' }}>
+                      {byType.map((lt,i)=>(
+                        <span key={i} style={{ background:lt.gradient, color:lt.color, border:`1.5px solid ${lt.border}`, borderRadius:99, padding:'3px 11px', fontSize:12, fontWeight:700, display:'inline-flex', alignItems:'center', gap:4 }}>
+                          {lt.emoji} {lt.label}: {lt.count} ครั้ง ({lt.days} วัน)
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {byType.length===0 && <div style={{ fontSize:12, color:'#9ca3af' }}>ยังไม่มีการอนุมัติ</div>}
                 </div>
               )
             })}
