@@ -67,14 +67,8 @@ export default function CheckIn() {
     : pages.filter(p => p.status === 'active')
 
   const [tab,          setTab]          = useState('checkin')
-  const [selectedCheckinDate, setSelectedCheckinDate] = useState(todayStr)
-
-  // ── บล็อคเช็คอินหลัง 09:00 ─────────────────────────
-  const isLateNow = useMemo(() => {
-    if (selectedCheckinDate && selectedCheckinDate !== todayStr) return false
-    const now = new Date()
-    return (now.getHours() * 60 + now.getMinutes()) >= CHECKIN_CUTOFF
-  }, [selectedCheckinDate])
+  // ── บล็อคเช็คอินหลัง 09:00 ──
+  const isLateNow = (new Date().getHours() * 60 + new Date().getMinutes()) >= CHECKIN_CUTOFF
   const [selectedShift,setSelectedShift]= useState(defaultShift)
   const [selectedPages,setSelectedPages]= useState([])   // multi-page
   const [saving,       setSaving]       = useState(false)
@@ -106,7 +100,7 @@ export default function CheckIn() {
     setSaving(true)
     try {
       await Promise.all(selectedPages.map(pageId =>
-        doCheckin({ userId: myUid, pageId, shift: selectedShift, date: selectedCheckinDate || todayStr })
+        doCheckin({ userId: myUid, pageId, shift: selectedShift, date: todayStr })
       ))
       const names = selectedPages.map(id => pages.find(p => p.id === id)?.name || id).join(', ')
       notifyCustom({
@@ -264,23 +258,6 @@ export default function CheckIn() {
               <LogIn size={17} style={{ color:'#6366f1' }}/> เช็คอินเพจ
             </div>
 
-            {/* Date picker - ย้อนหลังได้ */}
-            <div style={{ marginBottom:16 }}>
-              <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-                📅 วันที่ <span style={{ color:'#059669', fontSize:10, fontWeight:600, textTransform:'none', letterSpacing:'normal' }}>ย้อนหลังได้</span>
-              </label>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                <input type="date" value={selectedCheckinDate} onChange={e=>setSelectedCheckinDate(e.target.value)}
-                  style={{ padding:'8px 12px', borderRadius:9, border:`1.5px solid ${selectedCheckinDate!==todayStr?'#f59e0b':'#c7d2fe'}`, background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
-                {selectedCheckinDate!==todayStr && (
-                  <>
-                    <span style={{ background:'#fffbeb', color:'#b45309', border:'1px solid #fde68a', borderRadius:99, padding:'3px 10px', fontSize:11.5, fontWeight:700 }}>📅 บันทึกย้อนหลัง</span>
-                    <button onClick={()=>setSelectedCheckinDate(todayStr)}
-                      style={{ background:'#f1f5f9', border:'1px solid #e0e7ff', borderRadius:8, padding:'5px 12px', cursor:'pointer', fontSize:12, color:'#6b7280', fontFamily:'inherit' }}>↩ วันนี้</button>
-                  </>
-                )}
-              </div>
-            </div>
 
             {/* Shift picker */}
             <div style={{ marginBottom:18 }}>
