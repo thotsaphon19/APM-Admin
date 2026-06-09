@@ -11,6 +11,7 @@ const thisMonth = format(new Date(), 'yyyy-MM')
 
 export default function AuditOrders() {
   const { profile, user, canAudit, isSuperAdmin, canManage } = useAuth()
+  const canSeeSale = isSuperAdmin || profile?.role === 'assistant'
   const { commissions, auditOrders, pages, users, commRates,
           createAuditOrder, editAuditOrder, removeAuditOrder,
           getUserName, getPageName, getPage } = useData()
@@ -213,27 +214,74 @@ export default function AuditOrders() {
             {/* โปรโมชั่น */}
             <div style={{ marginBottom:16 }}>
               <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>🎯 โปรโมชั่น</label>
-              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {(form.promos||[]).map((pr,pi)=>(
-                  <div key={pi} style={{ display:'grid', gridTemplateColumns:'1fr 110px 32px', gap:8, alignItems:'center' }}>
-                    <input value={pr.name||''} placeholder="ชื่อโปร เช่น โปร A, Flash Sale"
-                      onChange={e=>setForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],name:e.target.value}; return {...p,promos:ps} })}
-                      style={{ ...S, fontSize:13 }}/>
-                    <input type="number" min="0" value={pr.qty||''} placeholder="บ้าน"
-                      onChange={e=>setForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],qty:parseInt(e.target.value)||0}; return {...p,promos:ps} })}
-                      style={{ ...S, fontSize:13, textAlign:'center', fontWeight:800, color:'#b45309' }}/>
-                    <button type="button" onClick={()=>setForm(p=>({...p,promos:(p.promos||[]).filter((_,i)=>i!==pi)}))}
-                      style={{ background:'#fff1f2', border:'1px solid #fecdd3', borderRadius:7, width:32, height:32, cursor:'pointer', color:'#be123c', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>×</button>
+                  <div key={pi} style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:11, padding:'10px 12px' }}>
+                    <div style={{ display:'grid', gridTemplateColumns:canSeeSale?'1fr 90px 110px 120px 32px':'1fr 90px 120px 32px', gap:8, alignItems:'center' }}>
+                      {/* ชื่อโปร */}
+                      <input value={pr.name||''} placeholder="ชื่อโปร เช่น โปร A, Flash Sale"
+                        onChange={e=>setForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],name:e.target.value}; return {...p,promos:ps} })}
+                        style={{ ...S, fontSize:13 }}/>
+                      {/* จำนวนบ้าน */}
+                      <input type="number" min="0" value={pr.qty||''} placeholder="บ้าน"
+                        onChange={e=>setForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],qty:parseInt(e.target.value)||0}; return {...p,promos:ps} })}
+                        style={{ ...S, fontSize:13, textAlign:'center', fontWeight:800, color:'#b45309' }}/>
+                      {/* ยอด/ราคา — เฉพาะ superadmin + assistant */}
+                      {canSeeSale
+                        ? <input type="number" min="0" value={pr.amount||''} placeholder="ยอด (฿)"
+                            onChange={e=>setForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],amount:parseFloat(e.target.value)||0}; return {...p,promos:ps} })}
+                            style={{ ...S, fontSize:13, textAlign:'right', color:'#059669', fontWeight:700 }}/>
+                        : <div/>
+                      }
+                      {/* วันที่ขาย */}
+                      <input type="date" value={pr.saleDate||form.date||''} 
+                        onChange={e=>setForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],saleDate:e.target.value}; return {...p,promos:ps} })}
+                        style={{ ...S, fontSize:12, color:'#6b7280' }}/>
+                      {/* ลบ */}
+                      <button type="button" onClick={()=>setForm(p=>({...p,promos:(p.promos||[]).filter((_,i)=>i!==pi)}))}
+                        style={{ background:'#fff1f2', border:'1px solid #fecdd3', borderRadius:7, width:32, height:32, cursor:'pointer', color:'#be123c', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>×</button>
+                    </div>
+                    {/* sub-labels */}
+                    <div style={{ display:'grid', gridTemplateColumns:canSeeSale?'1fr 90px 110px 120px 32px':'1fr 90px 120px 32px', gap:8, marginTop:3 }}>
+                      <span style={{ fontSize:10.5, color:'#9ca3af', paddingLeft:4 }}>ชื่อโปร</span>
+                      <span style={{ fontSize:10.5, color:'#9ca3af', textAlign:'center' }}>บ้าน</span>
+                      {canSeeSale ? <span style={{ fontSize:10.5, color:'#9ca3af', textAlign:'right' }}>ยอด (฿)</span> : <span/>}
+                      <span style={{ fontSize:10.5, color:'#9ca3af', textAlign:'center' }}>วันที่ขาย</span>
+                      <span/>
+                    </div>
                   </div>
                 ))}
                 <button type="button"
-                  onClick={()=>setForm(p=>({...p,promos:[...(p.promos||[]),{name:'',qty:0}]}))}
+                  onClick={()=>setForm(p=>({...p,promos:[...(p.promos||[]),{name:'',qty:0,amount:0,saleDate:p.date||''}]}))}
                   style={{ background:'#fffbeb', border:'1.5px dashed #fde68a', borderRadius:9, padding:'7px', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
                   + เพิ่มโปรโมชั่น
                 </button>
                 {(form.promos||[]).filter(p=>p.qty>0).length > 0 && (
-                  <div style={{ textAlign:'right', fontSize:13, fontWeight:800, color:'#b45309' }}>
-                    โปรรวม: {(form.promos||[]).reduce((a,p)=>a+(p.qty||0),0)} บ้าน
+                  <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef9ec)', border:'1px solid #fde68a', borderRadius:10, padding:'12px 14px', marginTop:4 }}>
+                    <div style={{ fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>📊 สรุปโปรโมชั่น</div>
+                    <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom:'1px solid #fde68a' }}>
+                          <th style={{ padding:'4px 8px', textAlign:'left', fontSize:11, fontWeight:800, color:'#92400e' }}>โปร</th>
+                          <th style={{ padding:'4px 8px', textAlign:'center', fontSize:11, fontWeight:800, color:'#92400e' }}>บ้าน</th>
+                          {canSeeSale && <th style={{ padding:'4px 8px', textAlign:'right', fontSize:11, fontWeight:800, color:'#92400e' }}>ยอด (฿)</th>}
+                          <th style={{ padding:'4px 8px', textAlign:'center', fontSize:11, fontWeight:800, color:'#92400e' }}>วันที่ขาย</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(form.promos||[]).filter(p=>p.name||p.qty>0).map((p,pi)=>(
+                          <tr key={pi} style={{ borderBottom:'1px solid #fef3c7' }}>
+                            <td style={{ padding:'5px 8px', fontSize:13, fontWeight:700, color:'#92400e' }}>{p.name||'—'}</td>
+                            <td style={{ padding:'5px 8px', textAlign:'center', fontSize:13, fontWeight:800, color:'#b45309' }}>{p.qty||0}</td>
+                            {canSeeSale && <td style={{ padding:'5px 8px', textAlign:'right', fontSize:13, fontWeight:700, color:'#059669' }}>
+                              {p.amount>0 ? `฿${parseFloat(p.amount).toLocaleString()}` : '—'}
+                            </td>}
+                            <td style={{ padding:'5px 8px', textAlign:'center', fontSize:12, color:'#6b7280' }}>{p.saleDate||'—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+
+                    </table>
                   </div>
                 )}
               </div>
@@ -337,8 +385,10 @@ export default function AuditOrders() {
                           </td>
                           <td style={{ padding:'10px 12px', fontSize:12 }}>
                             {(r.audit?.promos||[]).filter(p=>p.qty>0).map((p,pi)=>(
-                              <span key={pi} style={{ background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a', borderRadius:99, padding:'1px 8px', fontSize:11.5, fontWeight:700, marginRight:4, display:'inline-block' }}>
-                                {p.name}: {p.qty}
+                              <span key={pi} style={{ background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a', borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:700, marginRight:4, marginBottom:3, display:'inline-flex', alignItems:'center', gap:4 }}>
+                                {p.name}: {p.qty} บ้าน
+                                {canSeeSale && p.amount>0 && <span style={{ color:'#059669', fontSize:11 }}>· ฿{p.amount.toLocaleString()}</span>}
+                                {p.saleDate && <span style={{ color:'#6b7280', fontSize:10 }}>· {p.saleDate.slice(5)}</span>}
                               </span>
                             ))}
                             {!(r.audit?.promos||[]).filter(p=>p.qty>0).length && '—'}
@@ -384,11 +434,17 @@ export default function AuditOrders() {
                                         <span style={{ fontWeight:900, color:'#b45309', fontSize:15 }}>{r.auditTotal} บ้าน</span>
                                       </div>
                                       {(r.audit?.promos||[]).filter(p=>p.qty>0).map((p,pi)=>(
-                                        <div key={pi} style={{ display:'flex', justifyContent:'space-between', fontSize:12.5, color:'#92400e', marginBottom:4 }}>
-                                          <span>{p.name}</span><span style={{ fontWeight:700 }}>{p.qty} บ้าน</span>
+                                        <div key={pi} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12.5, color:'#92400e', marginBottom:4, padding:'3px 0', borderBottom:'1px solid #fef3c7' }}>
+                                          <span style={{ fontWeight:700 }}>{p.name}</span>
+                                          <div style={{ display:'flex', gap:10 }}>
+                                            <span style={{ fontWeight:800 }}>{p.qty} บ้าน</span>
+                                            {canSeeSale && p.amount>0 && <span style={{ color:'#059669', fontWeight:700 }}>฿{parseFloat(p.amount).toLocaleString()}</span>}
+                                            {p.saleDate && <span style={{ color:'#9ca3af', fontSize:11 }}>{p.saleDate.slice(5)}</span>}
+                                          </div>
                                         </div>
                                       ))}
-                                      {isSuperAdmin && r.audit?.saleAmount>0 && (
+
+                                      {canSeeSale && r.audit?.saleAmount>0 && (
                                         <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginTop:6, paddingTop:6, borderTop:'1px solid #fde68a' }}>
                                           <span>💵 ยอดขาย</span>
                                           <span style={{ fontWeight:800, color:'#059669' }}>฿{parseFloat(r.audit.saleAmount).toLocaleString()}</span>
@@ -436,7 +492,7 @@ export default function AuditOrders() {
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr style={{ background:'#fef9ec', borderBottom:'1.5px solid #fde68a' }}>
-                  {['วันที่','เพจ','ออเดอร์รวม','โปรโมชั่น',isSuperAdmin?'ยอดขาย':'','หมายเหตุ',''].filter(Boolean).map((h,i)=>(
+                  {['วันที่','เพจ','ออเดอร์รวม','โปรโมชั่น',canSeeSale?'ยอดขาย':'','หมายเหตุ',''].filter(Boolean).map((h,i)=>(
                     <th key={i} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -460,7 +516,7 @@ export default function AuditOrders() {
                         ))}
                         {!(a.promos||[]).filter(p=>p.qty>0).length && '—'}
                       </td>
-                      {isSuperAdmin && <td style={{ padding:'10px 12px', fontSize:13, fontWeight:700, color:'#059669' }}>
+                      {canSeeSale && <td style={{ padding:'10px 12px', fontSize:13, fontWeight:700, color:'#059669' }}>
                         {a.saleAmount>0?`฿${parseFloat(a.saleAmount).toLocaleString()}`:'—'}
                       </td>}
                       <td style={{ padding:'10px 12px', fontSize:12.5, color:'#6b7280' }}>{a.note||'—'}</td>
