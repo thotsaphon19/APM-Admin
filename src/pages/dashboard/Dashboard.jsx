@@ -26,7 +26,8 @@ const KPI_CARD_DEFS = [
 ]
 
 export default function Dashboard() {
-  const { profile } = useAuth()
+  const { profile, isSuperAdmin, canManage, canAudit } = useAuth()
+  const canSeeAll = !!(isSuperAdmin || canManage || canAudit || profile?.role === 'assistant')
   const { commissions, pages, leaves, users, checkins, getCommStats, getUserName, getPageName } = useData()
 
   // ── Period selector ──────────────────────────────
