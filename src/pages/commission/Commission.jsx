@@ -54,7 +54,7 @@ export default function Commission() {
   const [sumYear,    setSumYear]    = useState(today.slice(0,4))
 
   const makeBlank = () => ({
-    date:today, adminId: isAdmin ? myUid : '',
+    date:today, saleDate:today, adminId: isAdmin ? myUid : '',
     pageId:'', shift:'day',
     manualOrders:'', manualRate: commRates.manualRate ?? 5,
     aiOrders:'',     aiRate:     commRates.aiRate     ?? 2,
@@ -743,12 +743,18 @@ export default function Commission() {
               {err && <div style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:10, padding:'10px 14px', color:'#be123c', fontSize:13.5, marginBottom:14, display:'flex', gap:8 }}>❌ {err}</div>}
 
               {/* Row 1: วันที่ + แอดมิน + กะ */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14, marginBottom:14 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:14, marginBottom:14 }}>
                 <div>
                   <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
-                    📅 วันที่ * <span style={{ color:'#059669', fontSize:10, fontWeight:600, textTransform:'none' }}>ย้อนหลังได้</span>
+                    📅 วันที่ลง *
                   </label>
                   <input type="date" style={S} value={form.date} onChange={setF('date')}/>
+                </div>
+                <div>
+                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
+                    🛒 วันที่ขาย *
+                  </label>
+                  <input type="date" style={S} value={form.saleDate||form.date} onChange={setF('saleDate')}/>
                 </div>
                 <div>
                   <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>👤 แอดมิน *</label>
