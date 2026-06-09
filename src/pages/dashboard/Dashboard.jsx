@@ -392,6 +392,95 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ══ ไม่มีเพจตอบ วันนี้ + รอลา ══════════════════ */}
+      {(() => {
+        const noPageToday = leaves.filter(l =>
+          l.leaveType === 'no_page' && l.startDate === today && !l.deleted
+        )
+        const pendingLeaves = leaves.filter(l =>
+          l.status === 'pending' && !l.deleted
+        )
+        if (noPageToday.length === 0 && pendingLeaves.length === 0) return null
+        return (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+
+            {/* ── ไม่มีเพจตอบวันนี้ ── */}
+            {noPageToday.length > 0 && (
+              <div style={{ background:'#fff', border:'1.5px solid #bfdbfe', borderRadius:18, overflow:'hidden', boxShadow:'0 2px 12px rgba(2,132,199,.07)' }}>
+                <div style={{ background:'linear-gradient(135deg,#eff6ff,#dbeafe)', padding:'14px 18px', borderBottom:'1.5px solid #bfdbfe', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div style={{ fontSize:14, fontWeight:900, color:'#0284c7', display:'flex', alignItems:'center', gap:8 }}>
+                    📭 ไม่มีเพจตอบวันนี้
+                  </div>
+                  <span style={{ background:'#dbeafe', color:'#0284c7', border:'1.5px solid #bfdbfe', borderRadius:99, padding:'3px 12px', fontSize:13, fontWeight:800 }}>
+                    {noPageToday.length} คน
+                  </span>
+                </div>
+                <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+                  {noPageToday.map((l,i) => (
+                    <div key={l.id||i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'linear-gradient(135deg,#eff6ff,#f0f9ff)', borderRadius:12, border:'1px solid #bfdbfe' }}>
+                      <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#0284c7,#0ea5e9)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, flexShrink:0 }}>
+                        {getUserName(l.employeeId).slice(0,2)}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13.5, fontWeight:700, color:'#1e1b4b' }}>{getUserName(l.employeeId)}</div>
+                        {l.reason && l.reason !== 'ไม่มีเพจตอบ' && (
+                          <div style={{ fontSize:11.5, color:'#6b7280', marginTop:2 }}>{l.reason}</div>
+                        )}
+                      </div>
+                      <span style={{ background:'#eff6ff', color:'#0284c7', border:'1px solid #bfdbfe', borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:700 }}>
+                        📭 ไม่มีเพจ
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── รอลา ── */}
+            {pendingLeaves.length > 0 && (canSeeAll || isSuperAdmin) && (
+              <div style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:18, overflow:'hidden', boxShadow:'0 2px 12px rgba(180,83,9,.07)' }}>
+                <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'14px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div style={{ fontSize:14, fontWeight:900, color:'#b45309', display:'flex', alignItems:'center', gap:8 }}>
+                    ⏳ รออนุมัติวันลา
+                  </div>
+                  <span style={{ background:'#fef3c7', color:'#b45309', border:'1.5px solid #fde68a', borderRadius:99, padding:'3px 12px', fontSize:13, fontWeight:800 }}>
+                    {pendingLeaves.length} รายการ
+                  </span>
+                </div>
+                <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+                  {pendingLeaves.slice(0,5).map((l,i) => {
+                    const lt = ['personal','sick','vacation','emergency','no_page','other']
+                    const em = ['🏠','🤒','🌴','🚨','📭','📝']
+                    const ei = lt.indexOf(l.leaveType)
+                    return (
+                      <div key={l.id||i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'linear-gradient(135deg,#fffbeb,#fefce8)', borderRadius:12, border:'1px solid #fde68a' }}>
+                        <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#d97706,#f59e0b)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, flexShrink:0 }}>
+                          {getUserName(l.employeeId).slice(0,2)}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13.5, fontWeight:700, color:'#1e1b4b' }}>{getUserName(l.employeeId)}</div>
+                          <div style={{ fontSize:11.5, color:'#6b7280', marginTop:2 }}>
+                            {em[ei]||'📝'} {l.startDate}{l.startDate!==l.endDate?` – ${l.endDate}`:''}
+                          </div>
+                        </div>
+                        <a href="/leave" style={{ background:'#fef3c7', color:'#b45309', border:'1px solid #fde68a', borderRadius:8, padding:'3px 10px', fontSize:11.5, fontWeight:700, textDecoration:'none' }}>
+                          ดู →
+                        </a>
+                      </div>
+                    )
+                  })}
+                  {pendingLeaves.length > 5 && (
+                    <div style={{ textAlign:'center', fontSize:12, color:'#9ca3af', padding:'4px 0' }}>
+                      และอีก {pendingLeaves.length - 5} รายการ
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
