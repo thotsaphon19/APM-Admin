@@ -12,7 +12,7 @@ import { getFirestore } from 'firebase/firestore'
 // 5. วางแทนค่าด้านล่างนี้
 // ======================================================
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            || "YOUR_API_KEY",
   authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN        || "YOUR_PROJECT.firebaseapp.com",
   projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         || "YOUR_PROJECT_ID",
