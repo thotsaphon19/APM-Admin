@@ -55,14 +55,7 @@ export default function CheckIn() {
   const { profile, user, isSuperAdmin, canManage, canAudit } = useAuth()
   const canSeeAll2 = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
 
-  // ── บล็อคเช็คอินหลัง 09:00 ─────────────────────────
-  // คำนวณ real-time (ใช้ selectedCheckinDate เพื่อรองรับย้อนหลัง)
-  const isLateNow = useMemo(() => {
-    // ถ้าเลือกวันย้อนหลัง ไม่บล็อค
-    if (selectedCheckinDate && selectedCheckinDate !== todayStr) return false
-    const now = new Date()
-    return (now.getHours() * 60 + now.getMinutes()) >= CHECKIN_CUTOFF
-  }, [selectedCheckinDate])
+
   const { pages, checkins, users, doCheckin, doCheckout, getUserName } = useData()
   const { notifyCustom } = useNotify()
 
@@ -75,6 +68,13 @@ export default function CheckIn() {
 
   const [tab,          setTab]          = useState('checkin')
   const [selectedCheckinDate, setSelectedCheckinDate] = useState(todayStr)
+
+  // ── บล็อคเช็คอินหลัง 09:00 ─────────────────────────
+  const isLateNow = useMemo(() => {
+    if (selectedCheckinDate && selectedCheckinDate !== todayStr) return false
+    const now = new Date()
+    return (now.getHours() * 60 + now.getMinutes()) >= CHECKIN_CUTOFF
+  }, [selectedCheckinDate])
   const [selectedShift,setSelectedShift]= useState(defaultShift)
   const [selectedPages,setSelectedPages]= useState([])   // multi-page
   const [saving,       setSaving]       = useState(false)
