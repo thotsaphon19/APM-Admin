@@ -3,6 +3,7 @@ import { format, parseISO, differenceInDays, isToday, isFuture, isPast } from 'd
 import { th } from 'date-fns/locale'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
 import { useData } from '../../contexts/DataContext'
+import PageBadge from '../../components/ui/PageBadge'
 import { Avatar, Empty, Alert } from '../../components/ui'
 import {
   Users, CalendarDays, TrendingUp, BookOpen,
@@ -412,10 +413,9 @@ export default function TeamDashboard() {
                     ? <div style={{ fontSize:12.5, color:'#9ca3af', textAlign:'center', padding:'12px 0' }}>ยังไม่มีเพจที่รับผิดชอบ</div>
                     : <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
                         {pg.all.map(p=>(
-                          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'linear-gradient(135deg,#fafbff,#f0f4ff)', borderRadius:10, border:'1px solid #e0e7ff' }}>
-                            <span style={{ fontSize:16 }}>{p.type==='main'?'⭐':'🧪'}</span>
-                            <span style={{ fontSize:13, fontWeight:600, color:'#1e1b4b', flex:1 }}>{p.name}</span>
-                            <span style={{ background:p.status==='active'?'#f0fdf4':'#fff1f2', color:p.status==='active'?'#059669':'#be123c', border:`1px solid ${p.status==='active'?'#bbf7d0':'#fecdd3'}`, borderRadius:99, padding:'1px 8px', fontSize:11, fontWeight:700 }}>
+                          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', background:'linear-gradient(135deg,#fafbff,#f0f4ff)', borderRadius:12, border:'1px solid #e0e7ff' }}>
+                            <PageBadge page={p} size='sm'/>
+                            <span style={{ marginLeft:'auto', background:p.status==='active'?'#f0fdf4':'#fff1f2', color:p.status==='active'?'#059669':'#be123c', border:`1px solid ${p.status==='active'?'#bbf7d0':'#fecdd3'}`, borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:700, flexShrink:0 }}>
                               {p.status==='active'?'🟢 ใช้งาน':'🔴 ปิด'}
                             </span>
                           </div>
