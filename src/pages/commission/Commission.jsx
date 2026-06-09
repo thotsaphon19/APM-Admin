@@ -37,6 +37,7 @@ export default function Commission() {
   const [showNoPage, setShowNoPage] = useState(false)
   const [noPageDate, setNoPageDate] = useState(today)
   const [noPageNote, setNoPageNote] = useState('')
+  const [backendForm, setBackendForm] = useState({ pageId:'', totalOrders:0, saleAmount:0, promos:[], note:'' })
   const [editItem,   setEditItem]   = useState(null)
   const [saving,     setSaving]     = useState(false)
   const [err,        setErr]        = useState('')
