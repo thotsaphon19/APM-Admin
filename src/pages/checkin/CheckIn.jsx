@@ -192,32 +192,60 @@ export default function CheckIn() {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
-      {/* Header */}
-      <div>
-        <h2 style={{ fontSize:20, fontWeight:900, color:'#1e1b4b', marginBottom:3 }}>
-          🏁 ระบบสถานะกะ / เพจ
-        </h2>
-        <p style={{ fontSize:12.5, color:'#6b7280' }}>
-          📅 {format(new Date(), 'EEEE d MMMM yyyy', { locale:th })} ·
-          ออนไลน์อยู่ {liveToday.length} คน
-        </p>
+      {/* ── HERO HEADER ────────────────────────────────── */}
+      <div style={{ background:'linear-gradient(135deg,#312e81,#4338ca,#6366f1)', borderRadius:22, padding:'20px 26px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-30, right:-30, width:130, height:130, borderRadius:'50%', background:'rgba(255,255,255,.07)' }}/>
+        <div style={{ position:'absolute', bottom:-20, left:100, width:90, height:90, borderRadius:'50%', background:'rgba(255,255,255,.05)' }}/>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12, position:'relative' }}>
+          <div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#fff', display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+              🏁 ระบบสถานะกะ / เพจ
+            </div>
+            <div style={{ fontSize:13, color:'rgba(255,255,255,.7)', display:'flex', alignItems:'center', gap:6 }}>
+              📅 {format(new Date(), 'EEEE d MMMM yyyy', { locale:th })}
+              <span style={{ background:'rgba(255,255,255,.15)', borderRadius:99, padding:'1px 10px', fontSize:12 }}>
+                🟢 ออนไลน์ {liveToday.length} คน
+              </span>
+            </div>
+          </div>
+        </div>
+        {/* KPI strip */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginTop:16, position:'relative' }}>
+          {[
+            { e:'🟢', l:'Online ตอนนี้',   v:`${liveToday.length} คน`,             c:'#86efac' },
+            { e:'📋', l:'เช็คอินวันนี้',   v:`${checkins.filter(c=>c.date===todayStr).length} ครั้ง`, c:'#c4b5fd' },
+            { e:'✅', l:'เช็คเอาท์แล้ว',  v:`${checkins.filter(c=>c.date===todayStr&&c.status==='inactive').length} คน`, c:'#99f6e4' },
+          ].map((k,i)=>(
+            <div key={i} style={{ background:'rgba(255,255,255,.12)', borderRadius:14, padding:'12px 14px', border:'1px solid rgba(255,255,255,.12)', backdropFilter:'blur(4px)' }}>
+              <div style={{ fontSize:18, marginBottom:4 }}>{k.e}</div>
+              <div style={{ fontSize:18, fontWeight:900, color:k.c }}>{k.v}</div>
+              <div style={{ fontSize:10.5, color:'rgba(255,255,255,.55)', marginTop:2 }}>{k.l}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:12, padding:4, gap:3, width:'fit-content', flexWrap:'wrap' }}>
-        {TABS.map(t => (
+      {/* ── TABS ─────────────────────────────────────────── */}
+      <div style={{ display:'flex', background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'1.5px solid #c7d2fe', borderRadius:14, padding:4, gap:3, width:'fit-content' }}>
+        {TABS.filter(t=>t.show).map(t => (
           <button key={t.k} onClick={() => setTab(t.k)}
-            style={{ padding:'8px 16px', borderRadius:9, border:'none', cursor:'pointer', fontSize:13.5, fontWeight:700, fontFamily:'inherit',
+            style={{ padding:'9px 18px', borderRadius:11, border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
               background: tab===t.k ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : 'transparent',
-              color: tab===t.k ? '#fff' : '#6366f1', whiteSpace:'nowrap',
-              boxShadow: tab===t.k ? '0 3px 10px rgba(99,102,241,.3)' : 'none' }}>
+              color: tab===t.k ? '#fff' : '#6366f1',
+              display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+              boxShadow: tab===t.k ? '0 3px 10px rgba(99,102,241,.3)' : 'none',
+              transition:'all .2s' }}>
             {t.label}
+            {t.count > 0 && (
+              <span style={{ background:tab===t.k?'rgba(255,255,255,.3)':'#c7d2fe', color:tab===t.k?'#fff':'#4338ca', borderRadius:99, padding:'1px 7px', fontSize:11, fontWeight:900 }}>
+                {t.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* ═══════════ TAB: CHECK-IN ═══════════ */}
-      {tab === 'checkin' && (
+{tab === 'checkin' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
           {/* ── กำลังทำงานอยู่ ─────────────────────────────── */}
@@ -395,108 +423,63 @@ export default function CheckIn() {
 
       {tab === 'live' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <div style={{ fontSize:13, color:'#6b7280', display:'flex', alignItems:'center', gap:6 }}>
-            <div style={{ width:10, height:10, borderRadius:'50%', background:'#22c55e', boxShadow:'0 0 0 3px rgba(34,197,94,.2)', animation:'pulse 2s infinite' }}/>
-            อัพเดทแบบเรียลไทม์ · {format(new Date(),'HH:mm:ss')}
-            <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.2)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.1)}}`}</style>
+          {/* realtime badge */}
+          <div style={{ display:'inline-flex', alignItems:'center', gap:7, background:'#f0fdf4', border:'1.5px solid #86efac', borderRadius:99, padding:'6px 14px', width:'fit-content' }}>
+            <div style={{ width:10, height:10, borderRadius:'50%', background:'#22c55e', boxShadow:'0 0 0 3px rgba(34,197,94,.25)', animation:'pulse 2s infinite' }}/>
+            <span style={{ fontSize:13, fontWeight:700, color:'#059669' }}>อัพเดทแบบเรียลไทม์ · {format(new Date(),'HH:mm:ss')}</span>
           </div>
 
-          {/* Live page cards grid */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
-            {livePages.map(p => (
-              <div key={p.id} style={{
-                background:'#fff', borderRadius:16,
-                border:`1.5px solid ${p.active.length>0?'#86efac':'#e0e7ff'}`,
-                borderTop:`4px solid ${p.active.length>0?'#22c55e':'#e0e7ff'}`,
-                padding:18, boxShadow:'0 2px 8px rgba(0,0,0,.04)',
-                transition:'all .2s',
-              }}>
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
-                  <div>
-                    <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}><PageBadge page={p} size='sm'/></div>
-                    <div style={{ fontSize:12, color:'#9ca3af', marginTop:2 }}>
-                      {p.type==='main'?'เพจหลัก':'เพจทดสอบ'}
-                    </div>
-                  </div>
-                  <span style={{
-                    background: p.active.length>0?'#dcfce7':'#f1f5f9',
-                    color: p.active.length>0?'#059669':'#9ca3af',
-                    border:`1.5px solid ${p.active.length>0?'#bbf7d0':'#e5e7eb'}`,
-                    borderRadius:99, padding:'4px 12px', fontSize:12.5, fontWeight:800,
-                  }}>
-                    {p.active.length>0 ? `🟢 ${p.active.length} คน` : '⚫ ว่าง'}
-                  </span>
-                </div>
-
-                {p.active.length > 0 ? (
-                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                    {p.active.map(c => {
-                      const sh = SHIFTS[c.shift]
-                      return (
-                        <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, background:'#f9fafb', borderRadius:10, padding:'9px 12px', border:'1px solid #f0f4ff' }}>
-                          <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, flexShrink:0 }}>
-                            {getUserName(c.userId).slice(0,2)}
-                          </div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13.5, fontWeight:700, color:'#1e1b4b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                              {getUserName(c.userId)}
-                            </div>
-                            <div style={{ fontSize:11.5, color:'#9ca3af', display:'flex', alignItems:'center', gap:5, marginTop:2 }}>
-                              <span style={{ background:sh.bg, color:sh.dark, borderRadius:99, padding:'1px 7px', fontWeight:700, fontSize:11 }}>{sh.label.split(' ')[0]} {sh.short}</span>
-                              เข้า {fmtTime(c.checkinTime)}
-                            </div>
-                          </div>
-                          {(c.userId === myUid || isHead) && (
-                            <button onClick={() => handleCheckout(c.id, c.pageId)} disabled={saving}
-                              style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:12, fontWeight:800, color:'#be123c', fontFamily:'inherit' }}>
-                              ออก
-                            </button>
-                          )}
+          {liveToday.length === 0 ? (
+            <div style={{ background:'linear-gradient(135deg,#f8faff,#eef2ff)', border:'1.5px solid #e0e7ff', borderRadius:20, padding:'50px 24px', textAlign:'center' }}>
+              <div style={{ fontSize:56, marginBottom:14 }}>😴</div>
+              <div style={{ fontSize:17, fontWeight:900, color:'#1e1b4b', marginBottom:6 }}>ยังไม่มีใครออนไลน์</div>
+              <div style={{ fontSize:13, color:'#9ca3af' }}>เมื่อมีการเช็คอิน จะแสดงที่นี่แบบ realtime</div>
+            </div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:12 }}>
+              {liveToday.map((c,i) => {
+                const pg  = pages.find(p => p.id === c.pageId)
+                const sh  = SHIFTS[c.shift]
+                const dur = calcDuration(c.checkinTime, new Date())
+                const colors = ['#6366f1','#8b5cf6','#0284c7','#059669','#d97706','#ec4899']
+                const col = colors[i % colors.length]
+                return (
+                  <div key={c.id} style={{ background:'#fff', border:`2px solid ${col}22`, borderLeft:`5px solid ${col}`, borderRadius:18, padding:'16px 18px', boxShadow:`0 3px 14px ${col}12` }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+                      <div style={{ width:44, height:44, borderRadius:'50%', background:`linear-gradient(135deg,${col},${col}cc)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:900, flexShrink:0 }}>
+                        {getUserName(c.userId).slice(0,2)}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, fontWeight:900, color:'#1e1b4b' }}>{getUserName(c.userId)}</div>
+                        <div style={{ display:'inline-flex', alignItems:'center', gap:4, background:`${col}15`, borderRadius:99, padding:'2px 9px', marginTop:3 }}>
+                          <div style={{ width:7, height:7, borderRadius:'50%', background:'#22c55e' }}/>
+                          <span style={{ fontSize:11, fontWeight:700, color:col }}>ออนไลน์</span>
                         </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ textAlign:'center', padding:'12px 0', color:'#d1d5db', fontSize:13 }}>
-                    ไม่มีแอดมิน
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Live summary strip */}
-          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:14, padding:'14px 20px' }}>
-            <div style={{ fontSize:13.5, fontWeight:800, color:'#1e1b4b', marginBottom:10 }}>👥 สรุปแอดมินที่ Online ตอนนี้</div>
-            {liveToday.length === 0 ? (
-              <div style={{ color:'#9ca3af', fontSize:13 }}>ยังไม่มีใครเช็คอิน</div>
-            ) : (
-              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                {[...new Set(liveToday.map(c=>c.userId))].map(uid => {
-                  const myC = liveToday.filter(c=>c.userId===uid)
-                  return (
-                    <div key={uid} style={{ background:'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:10, padding:'8px 14px', display:'flex', alignItems:'center', gap:8 }}>
-                      <div style={{ width:30, height:30, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800 }}>
-                        {getUserName(uid).slice(0,2)}
                       </div>
-                      <div>
-                        <div style={{ fontSize:13, fontWeight:700, color:'#1e1b4b' }}>{getUserName(uid)}</div>
-                        <div style={{ fontSize:11, color:'#059669' }}>{myC.length} เพจ · {myC.map(c=>SHIFTS[c.shift]?.label.split(' ')[0]).join(' ')}</div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontSize:11, color:'#9ca3af' }}>เข้า</div>
+                        <div style={{ fontSize:13, fontWeight:800, color:'#1e1b4b' }}>{fmtTime(c.checkinTime)}</div>
+                        {dur && <div style={{ fontSize:11, color:col, fontWeight:700 }}>{dur.label}</div>}
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <PageBadge page={pg} size='sm'/>
+                      <span style={{ background:sh?.bg||'#f1f5f9', color:sh?.color||'#6b7280', border:`1px solid ${sh?.border||'#e0e7ff'}`, borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:700 }}>
+                        {sh?.label}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ═══════════ TAB: HISTORY ═══════════ */}
       {tab === 'history' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           {/* Date picker + nav */}
-          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:14, padding:'14px 18px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+          <div style={{ background:'linear-gradient(135deg,#fff,#fafbff)', border:'1.5px solid #e0e7ff', borderRadius:18, padding:'16px 20px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
             <button onClick={() => setHistDate(format(subDays(parseISO(histDate),1),'yyyy-MM-dd'))}
               style={{ background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:9, width:34, height:34, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#6366f1' }}>
               <ChevronLeft size={16}/>
