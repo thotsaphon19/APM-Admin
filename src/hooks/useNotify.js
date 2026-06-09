@@ -28,6 +28,15 @@ export function useNotify() {
       targetRoles: ['superadmin','head_admin'],
     }),
 
+    // ── ไม่มีเพจตอบ ───────────────────────────────────
+    notifyNoPage: (date, note) => notify({
+      type: 'no_page',
+      title: `📭 ${myName} — ไม่มีเพจตอบ`,
+      message: `วันที่ ${date}${note ? ` · ${note}` : ''}`,
+      link: '/leave',
+      targetRoles: ['superadmin','head_admin','assistant','auditor'],
+    }),
+
     // แจ้งแอดมินคนนั้นโดยตรงด้วย targetUserIds
     notifyLeaveResult: (employeeId, employeeName, approved, reason) => notify({
       type: approved ? 'leave_approve' : 'leave_reject',
