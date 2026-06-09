@@ -383,13 +383,26 @@ export function subscribePayrollDaily(callback) {
 
 // ─── CREATE USER (Auth + Firestore) ──────────────────
 export async function createUserWithEmail(email, password, profile) {
-  const { getAuth, createUserWithEmailAndPassword } = await import('firebase/auth')
-  const auth2 = getAuth()
-  const cred  = await createUserWithEmailAndPassword(auth2, email, password)
-  await setDoc(doc(db, 'users', cred.user.uid), {
-    ...profile,
-    email,
-    createdAt: serverTimestamp(),
-  })
-  return cred.user
+  const { initializeApp, getApps, deleteApp } = await import('firebase/app')
+  const { getAuth, createUserWithEmailAndPassword, signOut } = await import('firebase/auth')
+  const { firebaseConfig } = await import('./firebase')
+
+  // ใช้ secondary app เพื่อไม่ให้กระทบ session superadmin ที่ login อยู่
+  const secondaryAppName = 'secondary-create-' + Date.now()
+  const secondaryApp  = initializeApp(firebaseConfig, secondaryAppName)
+  const secondaryAuth = getAuth(secondaryApp)
+
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password)
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      ...profile,
+      email,
+      createdAt: serverTimestamp(),
+    })
+    return cred.user
+  } finally {
+    // ลบ secondary app ทันทีเพื่อไม่ให้ค้าง
+    await signOut(secondaryAuth).catch(()=>{})
+    await deleteApp(secondaryApp).catch(()=>{})
+  }
 }
