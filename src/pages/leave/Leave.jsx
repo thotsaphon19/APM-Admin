@@ -32,13 +32,16 @@ function getLT(v) { return LEAVE_TYPES.find(t => t.value === v) || LEAVE_TYPES[5
 export default function Leave() {
   const { profile, canManage, isSuperAdmin, canAudit } = useAuth()
   const { leaves, users, createLeave, approveLeave, rejectLeave, removeLeave, getUserName } = useData()
-  const { notifyLeaveRequest, notifyLeaveResult } = useNotify()
+  const { notifyLeaveRequest, notifyLeaveResult, notifyNoPage } = useNotify()
 
   const isAdmin = profile?.role === 'admin'
   const myUid   = profile?.id || ''
   const canSeeAllLeave = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
 
   const [showForm,     setShowForm]     = useState(false)
+  const [showNoPage,   setShowNoPage]   = useState(false)
+  const [noPageDate,   setNoPageDate]   = useState(today)
+  const [noPageNote,   setNoPageNote]   = useState('')
   const [confirm,      setConfirm]      = useState(null)
   const [filterStatus, setFilterStatus] = useState('')
   const [filterUser,   setFilterUser]   = useState('')
@@ -68,6 +71,29 @@ export default function Leave() {
     approved:  base.filter(l=>l.status==='approved').length,
     rejected:  base.filter(l=>l.status==='rejected').length,
     totalDays: base.filter(l=>l.status==='approved').reduce((a,l)=>a+countDays(l.startDate,l.endDate),0),
+  }
+
+  // ── บันทึก "ไม่มีเพจตอบ" โดยไม่ขอลา ─────────────────
+  const handleNoPage = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await createLeave({
+        employeeId: myUid,
+        startDate:  noPageDate,
+        endDate:    noPageDate,
+        leaveType:  'no_page',
+        status:     'approved',     // อนุมัติอัตโนมัติ ไม่ต้องรออนุมัติ
+        reason:     noPageNote || 'ไม่มีเพจตอบ',
+        createdAt:  new Date().toISOString(),
+        autoApproved: true,
+      })
+      notifyNoPage(noPageDate, noPageNote)
+      setShowNoPage(false)
+      setNoPageDate(today)
+      setNoPageNote('')
+    } catch(e) { setErr(e.message) }
+    finally { setSaving(false) }
   }
 
   const handleSubmit = async () => {
@@ -124,10 +150,16 @@ export default function Leave() {
             </div>
           </div>
           {(isAdmin || canManage || profile?.role==='assistant') && (
-            <button onClick={()=>setShowForm(true)}
-              style={{ background:'rgba(255,255,255,.18)', border:'1.5px solid rgba(255,255,255,.35)', borderRadius:13, padding:'10px 20px', cursor:'pointer', fontSize:14, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7, backdropFilter:'blur(8px)', whiteSpace:'nowrap' }}>
-              <Plus size={15}/> + ขอลา
-            </button>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <button onClick={()=>{ setShowForm(true); setShowNoPage(false) }}
+                style={{ background:'rgba(255,255,255,.18)', border:'1.5px solid rgba(255,255,255,.35)', borderRadius:13, padding:'10px 20px', cursor:'pointer', fontSize:14, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7, backdropFilter:'blur(8px)', whiteSpace:'nowrap' }}>
+                <Plus size={15}/> + ขอลา
+              </button>
+              <button onClick={()=>{ setShowNoPage(p=>!p); setShowForm(false) }}
+                style={{ background:'rgba(14,165,233,.25)', border:'1.5px solid rgba(255,255,255,.35)', borderRadius:13, padding:'10px 20px', cursor:'pointer', fontSize:14, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:7, backdropFilter:'blur(8px)', whiteSpace:'nowrap' }}>
+                📭 ไม่มีเพจตอบ
+              </button>
+            </div>
           )}
         </div>
 
@@ -147,6 +179,48 @@ export default function Leave() {
           ))}
         </div>
       </div>
+
+      {/* ══ No-Page Quick Form ════════════════════════ */}
+      {showNoPage && (
+        <div style={{ background:'linear-gradient(135deg,#eff6ff,#dbeafe)', border:'2px solid #bfdbfe', borderRadius:18, overflow:'hidden', boxShadow:'0 4px 20px rgba(2,132,199,.12)' }}>
+          <div style={{ background:'linear-gradient(135deg,#0284c7,#0ea5e9)', padding:'14px 20px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ fontSize:15, fontWeight:900, color:'#fff', display:'flex', alignItems:'center', gap:8 }}>
+              📭 แจ้งไม่มีเพจตอบ
+              <span style={{ background:'rgba(255,255,255,.2)', borderRadius:99, padding:'2px 10px', fontSize:11.5, fontWeight:600 }}>
+                บันทึกโดยไม่ต้องขอลา · อนุมัติอัตโนมัติ
+              </span>
+            </div>
+            <button onClick={()=>setShowNoPage(false)}
+              style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:8, width:30, height:30, cursor:'pointer', color:'#fff', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+          </div>
+          <div style={{ padding:20 }}>
+            {err && <div style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:10, padding:'10px 14px', color:'#be123c', fontSize:13, marginBottom:14 }}>❌ {err}</div>}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#0284c7', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📅 วันที่</label>
+                <input type="date" style={IS} value={noPageDate} onChange={e=>setNoPageDate(e.target.value)}/>
+              </div>
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#0284c7', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📝 หมายเหตุ</label>
+                <input style={IS} value={noPageNote} onChange={e=>setNoPageNote(e.target.value)}
+                  placeholder="เช่น เพจถูกปิด, ยังไม่มีเพจมอบหมาย"/>
+              </div>
+            </div>
+            <div style={{ background:'rgba(2,132,199,.08)', borderRadius:11, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#0284c7' }}>
+              💡 สถานะนี้จะบันทึกเป็น <strong>อนุมัติอัตโนมัติ</strong> ทันที — ไม่ต้องรอ head_admin อนุมัติ
+              และจะแสดงในสถิติวันลาด้านล่าง
+            </div>
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button onClick={()=>setShowNoPage(false)}
+                style={{ background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:10, padding:'9px 20px', cursor:'pointer', fontSize:13.5, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
+              <button onClick={handleNoPage} disabled={saving}
+                style={{ background:'linear-gradient(135deg,#0284c7,#0ea5e9)', border:'none', borderRadius:10, padding:'9px 24px', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', opacity:saving?0.6:1, boxShadow:'0 4px 14px rgba(2,132,199,.3)' }}>
+                {saving ? '⏳ กำลังบันทึก...' : '📭 บันทึกไม่มีเพจตอบ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ FORM ════════════════════════════════════ */}
       {showForm && (
