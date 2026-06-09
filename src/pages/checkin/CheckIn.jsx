@@ -220,29 +220,30 @@ export default function CheckIn() {
       {tab === 'checkin' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
-          {/* My active sessions */}
+          {/* ── กำลังทำงานอยู่ ─────────────────────────────── */}
           {myActive.length > 0 && (
-            <div style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'2px solid #86efac', borderRadius:16, padding:18 }}>
-              <div style={{ fontSize:14, fontWeight:900, color:'#059669', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
-                <CheckCircle2 size={17}/> กำลังทำงานอยู่ {myActive.length} เพจ
+            <div style={{ background:'linear-gradient(135deg,#059669,#10b981)', borderRadius:20, padding:20, position:'relative', overflow:'hidden' }}>
+              <div style={{ position:'absolute', top:-20, right:-20, width:100, height:100, borderRadius:'50%', background:'rgba(255,255,255,.08)' }}/>
+              <div style={{ fontSize:14, fontWeight:900, color:'#fff', marginBottom:14, display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:20 }}>✅</span> กำลังทำงานอยู่ {myActive.length} เพจ
               </div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
                 {myActive.map(c => {
                   const pg = pages.find(p => p.id === c.pageId)
                   const sh = SHIFTS[c.shift]
                   return (
-                    <div key={c.id} style={{ background:'#fff', border:'1.5px solid #86efac', borderRadius:14, padding:'12px 16px', display:'flex', alignItems:'center', gap:12, minWidth:200 }}>
-                      <div>
-                        <div style={{ fontSize:20 }}>{sh?.label.split(' ')[0]}</div>
+                    <div key={c.id} style={{ background:'rgba(255,255,255,.15)', backdropFilter:'blur(8px)', border:'1.5px solid rgba(255,255,255,.3)', borderRadius:16, padding:'14px 16px', display:'flex', alignItems:'center', gap:12, minWidth:210 }}>
+                      <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(255,255,255,.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>
+                        {sh?.label.split(' ')[0]}
                       </div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{pg?.name || '?'}</div>
-                        <div style={{ fontSize:12, color:'#9ca3af', marginTop:2 }}>
+                        <div style={{ fontSize:14, fontWeight:900, color:'#fff' }}>{pg?.name || '?'}</div>
+                        <div style={{ fontSize:12, color:'rgba(255,255,255,.7)', marginTop:2 }}>
                           {sh?.short} · เข้า {fmtTime(c.checkinTime)}
                         </div>
                       </div>
                       <button onClick={() => handleCheckout(c.id, c.pageId)} disabled={saving}
-                        style={{ background:'linear-gradient(135deg,#e11d48,#f43f5e)', border:'none', borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5 }}>
+                        style={{ background:'rgba(255,255,255,.2)', border:'1.5px solid rgba(255,255,255,.4)', borderRadius:10, padding:'8px 14px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, backdropFilter:'blur(4px)' }}>
                         <LogOut size={13}/> เช็คเอาท์
                       </button>
                     </div>
@@ -252,170 +253,146 @@ export default function CheckIn() {
             </div>
           )}
 
-          {/* Check-in form */}
-          <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:18, padding:22, boxShadow:'0 4px 16px rgba(99,102,241,.08)' }}>
-            <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b', marginBottom:18, display:'flex', alignItems:'center', gap:8 }}>
-              <LogIn size={17} style={{ color:'#6366f1' }}/> เช็คอินเพจ
-            </div>
+          {/* ── ฟอร์มเช็คอิน ───────────────────────────────── */}
+          <div style={{ background:'#fff', borderRadius:22, overflow:'hidden', boxShadow:'0 4px 24px rgba(99,102,241,.1)', border:'1.5px solid #e0e7ff' }}>
 
-
-            {/* Shift picker */}
-            <div style={{ marginBottom:18 }}>
-              <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-                เลือกกะการทำงาน
-              </label>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                {Object.entries(SHIFTS).map(([k, sh]) => (
-                  <button key={k} onClick={() => setSelectedShift(k)}
-                    style={{ padding:'16px', borderRadius:13, cursor:'pointer', textAlign:'left', fontFamily:'inherit',
-                      border: `2px solid ${selectedShift===k ? sh.color : sh.border}`,
-                      background: selectedShift===k ? sh.bg : '#fff',
-                      transition:'all .15s' }}>
-                    <div style={{ fontSize:22, marginBottom:6 }}>{sh.label.split(' ')[0]}</div>
-                    <div style={{ fontSize:14, fontWeight:900, color:selectedShift===k ? sh.dark : '#6b7280' }}>{sh.label}</div>
-                    <div style={{ fontSize:12, color:'#9ca3af', marginTop:3 }}>{sh.range}</div>
-                    {k === 'night' && (
-                      <div style={{ fontSize:11, color:'#6366f1', marginTop:5, fontWeight:600 }}>
-                        💡 กะข้ามวัน บันทึกใต้วันที่เริ่มกะ
-                      </div>
-                    )}
-                    {selectedShift===k && (
-                      <div style={{ fontSize:11, color:sh.dark, fontWeight:800, marginTop:6 }}>✓ เลือกแล้ว</div>
-                    )}
-                  </button>
-                ))}
+            {/* Header */}
+            <div style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed,#8b5cf6)', padding:'20px 24px', position:'relative', overflow:'hidden' }}>
+              <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,.07)' }}/>
+              <div style={{ position:'absolute', bottom:-20, left:60, width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,.05)' }}/>
+              <div style={{ fontSize:22, fontWeight:900, color:'#fff', display:'flex', alignItems:'center', gap:10, position:'relative' }}>
+                <span style={{ fontSize:28 }}>🏁</span> เช็คอินเพจ
+              </div>
+              <div style={{ fontSize:12.5, color:'rgba(255,255,255,.7)', marginTop:4, position:'relative' }}>
+                {format(new Date(), 'EEEE d MMMM yyyy · HH:mm', { locale: th })}
               </div>
             </div>
 
-            {/* Page multi-select */}
-            <div style={{ marginBottom:20 }}>
-              <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
-                เลือกเพจ (เลือกได้หลายเพจพร้อมกัน)
-              </label>
-              {myPages.length === 0 ? (
-                <div style={{ background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:10, padding:'12px 14px', color:'#9a3412', fontSize:13 }}>
-                  ⚠️ ไม่มีเพจที่รับผิดชอบ — ติดต่อหัวหน้าแอดมิน
+            <div style={{ padding:22 }}>
+              {/* ── กะ ── */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+                  🕐 เลือกกะการทำงาน
                 </div>
-              ) : (
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
-                  {myPages.map(p => {
-                    const alreadyIn = myActivePageIds.has(p.id)
-                    const selected  = selectedPages.includes(p.id)
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  {Object.entries(SHIFTS).map(([k, sh]) => {
+                    const sel = selectedShift === k
+                    const gradients = {
+                      day:   'linear-gradient(135deg,#fef3c7,#fde68a)',
+                      night: 'linear-gradient(135deg,#eef2ff,#ddd6fe)',
+                    }
+                    const selGrad = {
+                      day:   'linear-gradient(135deg,#d97706,#f59e0b)',
+                      night: 'linear-gradient(135deg,#4338ca,#6366f1)',
+                    }
                     return (
-                      <button key={p.id}
-                        onClick={() => !alreadyIn && togglePage(p.id)}
-                        disabled={alreadyIn}
-                        style={{
-                          padding:'12px 14px', borderRadius:12, cursor:alreadyIn?'not-allowed':'pointer',
-                          textAlign:'left', fontFamily:'inherit',
-                          border:`1.5px solid ${selected?'#6366f1':alreadyIn?'#bbf7d0':'#dde3f5'}`,
-                          background:selected?'linear-gradient(135deg,#eef2ff,#e0e7ff)':alreadyIn?'#f0fdf4':'#fff',
-                          opacity:alreadyIn?.75:1, transition:'all .15s',
-                          position:'relative',
-                        }}>
-                        <div style={{ fontSize:15, marginBottom:4 }}>
-                          {p.type==='main'?'⭐':'🧪'}
-                        </div>
-                        <div style={{ fontSize:13.5, fontWeight:700, color:selected?'#4338ca':alreadyIn?'#059669':'#1e1b4b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {p.name}
-                        </div>
-                        {alreadyIn && (
-                          <div style={{ fontSize:11, color:'#059669', fontWeight:700, marginTop:3 }}>✅ ทำงานอยู่</div>
+                      <button key={k} onClick={() => setSelectedShift(k)}
+                        style={{ padding:'18px 16px', borderRadius:16, cursor:'pointer', textAlign:'left', fontFamily:'inherit', border:`2px solid ${sel ? sh.color : sh.border}`, background:sel ? selGrad[k] : gradients[k], transition:'all .2s', position:'relative', overflow:'hidden' }}>
+                        <div style={{ position:'absolute', top:-10, right:-10, width:60, height:60, borderRadius:'50%', background:'rgba(255,255,255,.15)' }}/>
+                        <div style={{ fontSize:32, marginBottom:8 }}>{k==='day'?'☀️':'🌙'}</div>
+                        <div style={{ fontSize:15, fontWeight:900, color:sel?'#fff':sh.dark }}>{sh.label.replace(/[☀️🌙]\s*/,'')}</div>
+                        <div style={{ fontSize:12, color:sel?'rgba(255,255,255,.8)':'#9ca3af', marginTop:3 }}>{sh.range}</div>
+                        {k === 'night' && (
+                          <div style={{ fontSize:10.5, color:sel?'rgba(255,255,255,.7)':'#6366f1', marginTop:5, fontWeight:600 }}>
+                            💡 กะข้ามวัน บันทึกใต้วันที่เริ่มกะ
+                          </div>
                         )}
-                        {selected && !alreadyIn && (
-                          <div style={{ fontSize:11, color:'#4338ca', fontWeight:700, marginTop:3 }}>☑️ เลือกแล้ว</div>
+                        {sel && (
+                          <div style={{ position:'absolute', top:10, right:12, background:'rgba(255,255,255,.3)', borderRadius:99, padding:'2px 9px', fontSize:11, fontWeight:800, color:'#fff' }}>
+                            ✓ เลือกแล้ว
+                          </div>
                         )}
                       </button>
                     )
                   })}
                 </div>
-              )}
+              </div>
+
+              {/* ── เพจ ── */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+                  📄 เลือกเพจ <span style={{ fontSize:10, color:'#9ca3af', fontWeight:600, textTransform:'none' }}>(เลือกได้หลายเพจพร้อมกัน)</span>
+                </div>
+                {myPages.length === 0 ? (
+                  <div style={{ background:'linear-gradient(135deg,#fff7ed,#ffedd5)', border:'2px solid #fed7aa', borderRadius:14, padding:'16px 18px', display:'flex', alignItems:'center', gap:12 }}>
+                    <span style={{ fontSize:28 }}>⚠️</span>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:800, color:'#9a3412' }}>ไม่มีเพจที่รับผิดชอบ</div>
+                      <div style={{ fontSize:12.5, color:'#c2410c', marginTop:2 }}>ติดต่อหัวหน้าแอดมินเพื่อมอบหมายเพจ</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:8 }}>
+                    {myPages.map(p => {
+                      const alreadyIn = myActivePageIds.has(p.id)
+                      const selected  = selectedPages.includes(p.id)
+                      return (
+                        <button key={p.id} onClick={() => !alreadyIn && togglePage(p.id)} disabled={alreadyIn}
+                          style={{ padding:'14px', borderRadius:14, cursor:alreadyIn?'not-allowed':'pointer', textAlign:'left', fontFamily:'inherit',
+                            border:`2px solid ${selected?'#6366f1':alreadyIn?'#bbf7d0':'#e0e7ff'}`,
+                            background:selected?'linear-gradient(135deg,#eef2ff,#ede9fe)':alreadyIn?'linear-gradient(135deg,#f0fdf4,#dcfce7)':'linear-gradient(135deg,#fafbff,#f5f3ff)',
+                            opacity:alreadyIn?.8:1, transition:'all .15s', position:'relative', overflow:'hidden' }}>
+                          {selected && <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:'linear-gradient(90deg,#6366f1,#7c3aed)', borderRadius:'14px 14px 0 0' }}/>}
+                          {alreadyIn && <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:'linear-gradient(90deg,#059669,#10b981)', borderRadius:'14px 14px 0 0' }}/>}
+                          <div style={{ fontSize:20, marginBottom:6 }}>
+                            {alreadyIn ? '✅' : p.type==='main' ? '⭐' : '🧪'}
+                          </div>
+                          <div style={{ fontSize:13, fontWeight:700, color:selected?'#4338ca':alreadyIn?'#059669':'#1e1b4b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {p.name}
+                          </div>
+                          {alreadyIn && <div style={{ fontSize:10.5, color:'#059669', marginTop:4, fontWeight:700 }}>🟢 กำลังทำงาน</div>}
+                          {selected && !alreadyIn && <div style={{ fontSize:10.5, color:'#6366f1', marginTop:4, fontWeight:700 }}>✓ เลือกแล้ว</div>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Selected summary ── */}
               {selectedPages.length > 0 && (
-                <div style={{ marginTop:10, background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:9, padding:'8px 14px', fontSize:13, color:'#4338ca', fontWeight:600 }}>
-                  เลือก {selectedPages.length} เพจ: {selectedPages.map(id=>pages.find(p=>p.id===id)?.name||id).join(', ')}
+                <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'1.5px solid #c7d2fe', borderRadius:12, padding:'10px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:16 }}>📋</span>
+                  <span style={{ fontSize:13, color:'#4338ca', fontWeight:700 }}>
+                    เลือก {selectedPages.length} เพจ: {selectedPages.map(id=>pages.find(p=>p.id===id)?.name||id).join(', ')}
+                  </span>
                 </div>
               )}
-            </div>
 
-            {/* ── บล็อคหลัง 09:00 ── */}
-            {isLateNow && (
-              <div style={{ background:'linear-gradient(135deg,#fff1f2,#ffe4e6)', border:'2px solid #fca5a5', borderRadius:14, padding:'16px 20px', display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ fontSize:32, flexShrink:0 }}>🚫</div>
-                <div>
-                  <div style={{ fontSize:15, fontWeight:900, color:'#be123c', marginBottom:4 }}>หมดเวลาเช็คอินแล้ว</div>
-                  <div style={{ fontSize:13, color:'#6b7280' }}>ระบบปิดรับเช็คอินหลัง 09:00 น. — หากต้องการบันทึกย้อนหลังให้เลือกวันที่อื่น</div>
+              {/* ── บล็อคหลัง 09:00 ── */}
+              {isLateNow ? (
+                <div style={{ background:'linear-gradient(135deg,#fff1f2,#ffe4e6)', border:'2px solid #fca5a5', borderRadius:16, padding:'18px 20px', display:'flex', alignItems:'center', gap:14 }}>
+                  <div style={{ width:52, height:52, borderRadius:'50%', background:'linear-gradient(135deg,#be123c,#e11d48)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, flexShrink:0 }}>
+                    🚫
+                  </div>
+                  <div>
+                    <div style={{ fontSize:15, fontWeight:900, color:'#be123c', marginBottom:4 }}>หมดเวลาเช็คอินแล้ว</div>
+                    <div style={{ fontSize:13, color:'#6b7280' }}>ระบบปิดรับเช็คอินหลัง 09:00 น.</div>
+                  </div>
                 </div>
-              </div>
-            )}
-
-            <button onClick={handleCheckin}
-              disabled={!selectedPages.length || saving || isLateNow}
-              style={{
-                background: isLateNow ? '#e5e7eb' : selectedPages.length ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : '#e5e7eb',
-                border:'none', borderRadius:12, padding:'12px 28px', cursor:selectedPages.length?'pointer':'not-allowed',
-                fontSize:15, fontWeight:900, color:selectedPages.length?'#fff':'#9ca3af',
-                fontFamily:'inherit', display:'flex', alignItems:'center', gap:8,
-                boxShadow: selectedPages.length ? '0 4px 14px rgba(99,102,241,.35)' : 'none',
-                transition:'all .2s',
-              }}>
-              <LogIn size={16}/>
-              {saving ? 'กำลังเช็คอิน...' : `เช็คอิน ${selectedPages.length > 0 ? selectedPages.length+' เพจ' : ''}`}
-            </button>
-          </div>
-
-          {/* Today's my checkin history */}
-          {checkins.filter(c => c.userId === myUid && c.date === todayStr).length > 0 && (
-            <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
-              <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', padding:'12px 18px', borderBottom:'1.5px solid #e0e7ff', fontSize:14, fontWeight:800, color:'#4338ca' }}>
-                📋 บันทึกวันนี้ของฉัน
-              </div>
-              <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-                <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom:'1.5px solid #f0f4ff' }}>
-                      {['เพจ','กะ','เวลาเข้า','เวลาออก','รวม','สถานะ'].map((h,i)=>(
-                        <th key={i} style={{ padding:'9px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {checkins.filter(c => c.userId === myUid && c.date === todayStr)
-                      .sort((a,b)=>(a.checkinTime?.toDate?.()?.getTime()||0)-(b.checkinTime?.toDate?.()?.getTime()||0))
-                      .map(c => {
-                        const dur = calcDuration(c.checkinTime, c.checkoutTime)
-                        const sh  = SHIFTS[c.shift]
-                        return (
-                          <tr key={c.id} style={{ borderBottom:'1px solid #f0f4ff' }}>
-                            <td style={{ padding:'10px 14px', fontSize:13.5, fontWeight:700, color:'#1e1b4b' }}>
-                              {(() => { const pg = pages.find(p=>p.id===c.pageId); return pg ? <PageBadge page={pg} size='xs'/> : '?' })()} 
-                            </td>
-                            <td style={{ padding:'10px 14px' }}>
-                              <span style={{ background:sh.bg, color:sh.dark, border:`1.5px solid ${sh.border}`, borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700 }}>
-                                {sh.label}
-                              </span>
-                            </td>
-                            <td style={{ padding:'10px 14px', fontSize:14, fontWeight:700, color:'#059669' }}>{fmtTime(c.checkinTime)}</td>
-                            <td style={{ padding:'10px 14px', fontSize:14, fontWeight:700, color:'#be123c' }}>{fmtTime(c.checkoutTime)}</td>
-                            <td style={{ padding:'10px 14px', fontSize:13, fontWeight:700, color:'#4338ca' }}>{dur?.label || '—'}</td>
-                            <td style={{ padding:'10px 14px' }}>
-                              {c.status === 'active'
-                                ? <span style={{ background:'#dcfce7', color:'#059669', border:'1.5px solid #bbf7d0', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:800 }}>🟢 ทำงานอยู่</span>
-                                : <span style={{ background:'#f1f5f9', color:'#6b7280', border:'1.5px solid #e5e7eb', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700 }}>✅ เสร็จแล้ว</span>
-                              }
-                            </td>
-                          </tr>
-                        )
-                      })
-                    }
-                  </tbody>
-                </table>
-              </div>
+              ) : (
+                <button onClick={handleCheckin} disabled={!selectedPages.length || saving}
+                  style={{
+                    width:'100%', padding:'15px', borderRadius:16, border:'none',
+                    cursor:selectedPages.length&&!saving?'pointer':'not-allowed',
+                    background:selectedPages.length?'linear-gradient(135deg,#6366f1,#7c3aed)':'#e5e7eb',
+                    color:'#fff', fontSize:16, fontWeight:900, fontFamily:'inherit',
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+                    boxShadow:selectedPages.length?'0 6px 20px rgba(99,102,241,.35)':'none',
+                    transition:'all .2s', opacity:saving?.7:1,
+                  }}>
+                  {saving ? (
+                    <><span style={{ fontSize:18 }}>⏳</span> กำลังเช็คอิน...</>
+                  ) : (
+                    <><span style={{ fontSize:20 }}>🏁</span> เช็คอิน {selectedPages.length > 0 ? `${selectedPages.length} เพจ` : 'เพจ'}</>
+                  )}
+                </button>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* ═══════════ TAB: LIVE ═══════════ */}
       {tab === 'live' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <div style={{ fontSize:13, color:'#6b7280', display:'flex', alignItems:'center', gap:6 }}>
