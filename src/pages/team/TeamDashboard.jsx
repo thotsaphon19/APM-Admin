@@ -41,126 +41,128 @@ export default function TeamDashboard() {
 
   if (!['head_admin', 'superadmin'].includes(profile?.role)) {
     return (
-      <div className="card flex items-center gap-3 text-orange-400">
-        <AlertCircle size={20}/>
-        <span>เฉพาะหัวหน้าแอดมินและผู้ดูแลสูงสุดเท่านั้น</span>
+      <div style={{ background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:14, padding:'20px 24px', display:'flex', alignItems:'center', gap:12 }}>
+        <span style={{ fontSize:28 }}>🔒</span>
+        <span style={{ fontSize:14, color:'#9a3412', fontWeight:700 }}>เฉพาะหัวหน้าแอดมินและผู้ดูแลสูงสุดเท่านั้น</span>
       </div>
     )
   }
 
   const admins = users.filter(u => ['admin', 'head_admin'].includes(u.role))
 
-  // ── Leave data ─────────────────────────────────────
   const activeLeaves  = leaves.filter(l => !l.deleted && l.status === 'approved'
     && l.startDate <= today && l.endDate >= today)
   const pendingLeaves = leaves.filter(l => !l.deleted && l.status === 'pending')
   const monthLeaves   = leaves.filter(l => !l.deleted && l.startDate?.startsWith(filterMonth))
+  const onLeaveToday  = new Set(activeLeaves.map(l => l.employeeId))
+  const dayComms      = commissions.filter(c => c.date === filterDate)
 
-  // who is on leave today
-  const onLeaveToday = new Set(activeLeaves.map(l => l.employeeId))
+  const adminCommMap = {}
+  admins.forEach(u => {
+    const cs = dayComms.filter(c => c.adminId === u.id)
+    adminCommMap[u.id] = {
+      manual: cs.reduce((a,c)=>a+(c.manualOrders||0),0),
+      ai:     cs.reduce((a,c)=>a+(c.aiOrders||0),0),
+      total:  cs.reduce((a,c)=>a+(c.total||0),0),
+      entries:cs.length,
+      records:cs,
+    }
+  })
 
-  // ── Commission data ────────────────────────────────
-  const dayComms   = commissions.filter(c => c.date === filterDate)
-  const monthComms = commissions.filter(c => c.date?.startsWith(filterMonth))
+  const adminLeaveMap = {}
+  admins.forEach(u => {
+    const ul = leaves.filter(l=>!l.deleted&&l.employeeId===u.id)
+    adminLeaveMap[u.id] = {
+      isOnLeaveToday: onLeaveToday.has(u.id),
+      pending: ul.filter(l=>l.status==='pending').length,
+      approved: ul.filter(l=>l.status==='approved').length,
+    }
+  })
 
-  // per-admin commission summary
-  const adminCommMap = useMemo(() => {
-    const map = {}
-    admins.forEach(u => {
-      const cs = dayComms.filter(c => c.adminId === u.id)
-      map[u.id] = {
-        manual:     cs.reduce((a, c) => a + (c.manualOrders || 0), 0),
-        ai:         cs.reduce((a, c) => a + (c.aiOrders     || 0), 0),
-        manualComm: cs.reduce((a, c) => a + (c.manualTotal  || 0), 0),
-        aiComm:     cs.reduce((a, c) => a + (c.aiTotal      || 0), 0),
-        total:      cs.reduce((a, c) => a + (c.total        || 0), 0),
-        cancel:     cs.reduce((a, c) => a + (c.cancelOrders || 0), 0),
-        unclear:    cs.reduce((a, c) => a + (c.unclearOrders|| 0), 0),
-        entries:    cs.length,
-        records:    cs,
-      }
-    })
-    return map
-  }, [dayComms, admins])
+  const adminPageMap = {}
+  admins.forEach(u => {
+    adminPageMap[u.id] = {
+      all:  pages.filter(p=>p.assignedTo?.includes(u.id)),
+      main: pages.filter(p=>p.assignedTo?.includes(u.id)&&p.type==='main'),
+      test: pages.filter(p=>p.assignedTo?.includes(u.id)&&p.type==='test'),
+    }
+  })
 
-  // per-admin leave stats
-  const adminLeaveMap = useMemo(() => {
-    const map = {}
-    admins.forEach(u => {
-      const ul = leaves.filter(l => !l.deleted && l.employeeId === u.id)
-      map[u.id] = {
-        total:     ul.length,
-        approved:  ul.filter(l => l.status === 'approved').length,
-        pending:   ul.filter(l => l.status === 'pending').length,
-        rejected:  ul.filter(l => l.status === 'rejected').length,
-        totalDays: ul.filter(l => l.status === 'approved')
-          .reduce((a, l) => a + countDays(l.startDate, l.endDate), 0),
-        isOnLeaveToday: onLeaveToday.has(u.id),
-        records: ul.sort((a, b) => b.startDate?.localeCompare(a.startDate)),
-      }
-    })
-    return map
-  }, [leaves, admins, onLeaveToday])
-
-  // per-admin page
-  const adminPageMap = useMemo(() => {
-    const map = {}
-    admins.forEach(u => {
-      map[u.id] = {
-        all:  pages.filter(p => p.assignedTo?.includes(u.id)),
-        main: pages.filter(p => p.assignedTo?.includes(u.id) && p.type === 'main'),
-        test: pages.filter(p => p.assignedTo?.includes(u.id) && p.type === 'test'),
-      }
-    })
-    return map
-  }, [pages, admins])
+  const grandDay = Object.values(adminCommMap)
+    .reduce((a,v)=>({ total:a.total+v.total, manual:a.manual+v.manual, ai:a.ai+v.ai }), {total:0,manual:0,ai:0})
 
   const handleApprove = async (id) => {
     setSaving(true)
-    try { await approveLeave(id, profile?.id); setMsg('อนุมัติแล้ว ✅') }
-    catch(e) { } finally { setSaving(false); setTimeout(() => setMsg(''), 2500) }
+    try { await approveLeave(id, profile?.id); setMsg('อนุมัติแล้ว') }
+    catch(e) {} finally { setSaving(false); setTimeout(()=>setMsg(''),2500) }
   }
   const handleReject = async (id) => {
     setSaving(true)
     try { await rejectLeave(id, profile?.id); setMsg('ปฏิเสธแล้ว') }
-    catch(e) { } finally { setSaving(false); setTimeout(() => setMsg(''), 2500) }
+    catch(e) {} finally { setSaving(false); setTimeout(()=>setMsg(''),2500) }
   }
 
-  // grand totals
-  const grandDay = Object.values(adminCommMap)
-    .reduce((a, v) => ({ total: a.total + v.total, manual: a.manual + v.manual, ai: a.ai + v.ai }), { total: 0, manual: 0, ai: 0 })
-
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h2 className="text-lg font-black">ศูนย์บัญชาการทีม</h2>
-        <p className="text-xs text-gray-500 mt-0.5">
-          {todayLabel} · {admins.length} คนในทีม · ลาวันนี้ {onLeaveToday.size} คน · รออนุมัติลา {pendingLeaves.length} รายการ
-        </p>
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+      {/* ══ HERO HEADER ══════════════════════════════════ */}
+      <div style={{ background:'linear-gradient(135deg,#1e1b4b,#4338ca,#6366f1)', borderRadius:22, padding:'22px 26px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-40, right:-40, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,.07)' }}/>
+        <div style={{ position:'absolute', bottom:-25, left:80, width:100, height:100, borderRadius:'50%', background:'rgba(255,255,255,.05)' }}/>
+        <div style={{ position:'relative' }}>
+          <div style={{ fontSize:22, fontWeight:900, color:'#fff', marginBottom:4, display:'flex', alignItems:'center', gap:10 }}>
+            🛡️ ศูนย์บัญชาการทีม
+          </div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.7)' }}>
+            {todayLabel}
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:10, marginTop:16 }}>
+            {[
+              { e:'👥', l:'คนในทีม',         v:`${admins.length} คน`,             c:'#c4b5fd' },
+              { e:'🌴', l:'ลาวันนี้',         v:`${onLeaveToday.size} คน`,         c:'#fde68a' },
+              { e:'⏳', l:'รออนุมัติลา',      v:`${pendingLeaves.length} รายการ`,  c:'#fca5a5' },
+              { e:'💰', l:'ค่าคอมวันนี้',     v:`฿${grandDay.total.toLocaleString()}`, c:'#86efac' },
+            ].map((k,i)=>(
+              <div key={i} style={{ background:'rgba(255,255,255,.12)', borderRadius:14, padding:'12px 14px', border:'1px solid rgba(255,255,255,.12)', backdropFilter:'blur(4px)' }}>
+                <div style={{ fontSize:20, marginBottom:4 }}>{k.e}</div>
+                <div style={{ fontSize:17, fontWeight:900, color:k.c }}>{k.v}</div>
+                <div style={{ fontSize:10.5, color:'rgba(255,255,255,.55)', marginTop:2 }}>{k.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {msg && <Alert type="success">{msg}</Alert>}
-
-      {/* Alert: pending leaves */}
-      {pendingLeaves.length > 0 && (
-        <div className="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3 flex items-center gap-3 cursor-pointer"
-          onClick={() => setTab('leave')}>
-          <AlertCircle size={16} className="text-orange-400 flex-shrink-0"/>
-          <span className="text-sm text-gray-300">
-            <strong className="text-orange-400">{pendingLeaves.length} รายการ</strong> รออนุมัติวันลา — กดเพื่อดู
-          </span>
+      {msg && (
+        <div style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'1.5px solid #86efac', borderRadius:12, padding:'10px 16px', fontSize:13.5, fontWeight:700, color:'#059669' }}>
+          ✅ {msg}
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="tabs flex-wrap">
+      {/* ── รออนุมัติลา alert ── */}
+      {pendingLeaves.length > 0 && (
+        <div onClick={() => setTab('leave')}
+          style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'2px solid #fde68a', borderRadius:14, padding:'14px 18px', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+          <div style={{ width:40, height:40, borderRadius:'50%', background:'linear-gradient(135deg,#d97706,#f59e0b)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⏳</div>
+          <div>
+            <div style={{ fontSize:14, fontWeight:900, color:'#b45309' }}>{pendingLeaves.length} รายการรออนุมัติวันลา</div>
+            <div style={{ fontSize:12, color:'#92400e', marginTop:2 }}>กดเพื่อดูและอนุมัติ →</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TABS ── */}
+      <div style={{ display:'flex', background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'1.5px solid #c7d2fe', borderRadius:14, padding:4, gap:3, flexWrap:'wrap' }}>
         {TABS.map(t => (
-          <button key={t.key} className={`tab flex items-center gap-1.5 ${tab === t.key ? 'active' : ''}`}
-            onClick={() => setTab(t.key)}>
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{ padding:'9px 16px', borderRadius:11, border:'none', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
+              background: tab===t.key ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : 'transparent',
+              color: tab===t.key ? '#fff' : '#6366f1',
+              display:'flex', alignItems:'center', gap:6, transition:'all .2s',
+              boxShadow: tab===t.key ? '0 3px 10px rgba(99,102,241,.3)' : 'none' }}>
             <t.icon size={13}/> {t.label}
             {t.key === 'leave' && pendingLeaves.length > 0 && (
-              <span className="ml-1 bg-orange-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+              <span style={{ background:'#ef4444', color:'#fff', borderRadius:99, padding:'1px 7px', fontSize:10, fontWeight:900 }}>
                 {pendingLeaves.length}
               </span>
             )}
@@ -168,520 +170,308 @@ export default function TeamDashboard() {
         ))}
       </div>
 
-      {/* ══════════════ OVERVIEW ══════════════ */}
+      {/* ══ OVERVIEW ══════════════════════════════════════ */}
       {tab === 'overview' && (
-        <div className="space-y-4">
-          {/* Team member cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {admins.map(u => {
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>
+            {admins.map((u,ui) => {
               const lv = adminLeaveMap[u.id]
               const cm = adminCommMap[u.id]
               const pg = adminPageMap[u.id]
+              const isLeave = lv.isOnLeaveToday
+              const gradients = ['linear-gradient(135deg,#6366f1,#7c3aed)','linear-gradient(135deg,#0284c7,#0ea5e9)','linear-gradient(135deg,#059669,#10b981)','linear-gradient(135deg,#d97706,#f59e0b)','linear-gradient(135deg,#be123c,#e11d48)','linear-gradient(135deg,#7c3aed,#a855f7)']
+              const grad = gradients[ui % gradients.length]
               return (
-                <div key={u.id} className={`card hover:border-indigo-200 transition-all ${lv.isOnLeaveToday ? 'border-orange-500/40 bg-orange-500/5' : ''}`}>
-                  {/* Top */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <Avatar name={u.avatar || u.name} size="lg"/>
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-gray-900 ${lv.isOnLeaveToday ? 'bg-orange-500' : 'bg-emerald-500'}`}/>
+                <div key={u.id} style={{ background:'#fff', borderRadius:20, overflow:'hidden', boxShadow:'0 4px 20px rgba(99,102,241,.08)', border:`1.5px solid ${isLeave?'#fde68a':'#e0e7ff'}` }}>
+                  {/* color top bar */}
+                  <div style={{ height:5, background:isLeave?'linear-gradient(90deg,#d97706,#f59e0b)':grad }}/>
+                  <div style={{ padding:'16px 18px' }}>
+                    {/* profile row */}
+                    <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
+                      <div style={{ position:'relative' }}>
+                        <div style={{ width:48, height:48, borderRadius:'50%', background:grad, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:900 }}>
+                          {(u.avatar||u.name||'?').slice(0,2)}
+                        </div>
+                        <div style={{ position:'absolute', bottom:0, right:0, width:13, height:13, borderRadius:'50%', background:isLeave?'#f59e0b':'#22c55e', border:'2px solid #fff' }}/>
                       </div>
-                      <div>
-                        <div className="font-bold">{u.name}</div>
-                        <span className={`text-xs ${
-                          u.role === 'head_admin' ? 'text-orange-400' : 'text-brand-400'
-                        }`}>{ROLES[u.role]}</span>
-                        {lv.isOnLeaveToday && (
-                          <div className="text-xs text-orange-400 font-semibold mt-0.5">🟠 ลาวันนี้</div>
-                        )}
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b' }}>{u.name}</div>
+                        <div style={{ fontSize:11.5, color:u.role==='head_admin'?'#d97706':'#6366f1', fontWeight:700, marginTop:2 }}>
+                          {u.role==='head_admin'?'👔 หัวหน้าแอดมิน':'👤 แอดมิน'}
+                        </div>
+                        {isLeave && <div style={{ fontSize:11, color:'#b45309', fontWeight:700, marginTop:2 }}>🟠 ลาวันนี้</div>}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Stats grid */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <MiniBox label="เพจ" val={pg.all.length} color="text-brand-400" icon={<BookOpen size={10}/>}/>
-                    <MiniBox label="ค่าคอมวันนี้" val={`฿${cm.total.toLocaleString()}`} color="text-emerald-400" icon={<TrendingUp size={10}/>}/>
-                    <MiniBox label="รอลา" val={lv.pending} color={lv.pending > 0 ? 'text-orange-400' : 'text-gray-500'} icon={<Clock size={10}/>}/>
-                  </div>
+                    {/* KPI strip */}
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:12 }}>
+                      {[
+                        { l:'📄 เพจ',         v:pg.all.length },
+                        { l:'💰 ค่าคอมวันนี้', v:`฿${(cm.total||0).toLocaleString()}` },
+                        { l:'⏳ รอลา',         v:lv.pending },
+                      ].map((k,i)=>(
+                        <div key={i} style={{ background:'linear-gradient(135deg,#fafbff,#f0f4ff)', border:'1px solid #e0e7ff', borderRadius:10, padding:'8px 10px', textAlign:'center' }}>
+                          <div style={{ fontSize:11, color:'#6b7280', marginBottom:3 }}>{k.l}</div>
+                          <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b' }}>{k.v}</div>
+                        </div>
+                      ))}
+                    </div>
 
-                  {/* Pages preview */}
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {pg.all.slice(0, 3).map(p => (
-                      <span key={p.id} className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                        p.type === 'main'
-                          ? 'bg-brand-500/10 border-brand-500/30 text-brand-400'
-                          : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                      }`}>{p.name.length > 10 ? p.name.slice(0, 10) + '…' : p.name}</span>
-                    ))}
-                    {pg.all.length > 3 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-gray-500">+{pg.all.length - 3}</span>
+                    {/* Pages */}
+                    {pg.all.length > 0 && (
+                      <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:12 }}>
+                        {pg.all.map(p=>(
+                          <span key={p.id} style={{ background:'#eef2ff', color:'#4338ca', border:'1px solid #c7d2fe', borderRadius:99, padding:'2px 9px', fontSize:11.5, fontWeight:600 }}>
+                            {p.type==='main'?'⭐':'🧪'} {p.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
                     {pg.all.length === 0 && (
-                      <span className="text-[10px] text-red-400">ยังไม่มีเพจ</span>
+                      <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>ยังไม่มีเพจ</div>
                     )}
-                  </div>
 
-                  {/* Quick links */}
-                  <div className="flex gap-2 border-t border-indigo-100 pt-3">
-                    <button className="btn btn-ghost btn-sm flex-1 text-xs"
-                      onClick={() => { setTab('commission'); setExpandUid(u.id) }}>
-                      <TrendingUp size={11}/> ค่าคอม
-                    </button>
-                    <button className="btn btn-ghost btn-sm flex-1 text-xs"
-                      onClick={() => { setTab('leaveHistory'); setExpandUid(u.id) }}>
-                      <History size={11}/> ประวัติลา
-                    </button>
+                    {/* Action buttons */}
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                      <button onClick={() => { setTab('commission'); setExpandUid(u.id) }}
+                        style={{ background:'linear-gradient(135deg,#eef2ff,#e0e7ff)', border:'1.5px solid #c7d2fe', borderRadius:10, padding:'8px 0', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#4338ca', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                        <TrendingUp size={13}/> ค่าคอม
+                      </button>
+                      <button onClick={() => { setTab('leave'); setExpandUid(u.id) }}
+                        style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'1.5px solid #fde68a', borderRadius:10, padding:'8px 0', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                        <CalendarDays size={13}/> ประวัติลา
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {/* Today commission summary */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-bold flex items-center gap-2">
-                <TrendingUp size={15} className="text-brand-400"/> ยอดค่าคอมวันนี้ (รวมทีม)
-              </div>
-              <input type="date" className="input" style={{ width: 'auto' }}
-                value={filterDate} onChange={e => setFilterDate(e.target.value)}/>
+          {/* Grand total commission */}
+          <div style={{ background:'linear-gradient(135deg,#1e1b4b,#312e81)', borderRadius:18, padding:'20px 24px' }}>
+            <div style={{ fontSize:14, fontWeight:900, color:'rgba(255,255,255,.8)', marginBottom:14, display:'flex', alignItems:'center', gap:8 }}>
+              💰 ยอดค่าคอมวันนี้ (รวมทีม)
+              <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)}
+                style={{ marginLeft:'auto', padding:'5px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.1)', color:'#fff', fontSize:12.5, fontFamily:'inherit' }}/>
             </div>
-            <div className="grid grid-cols-3 gap-4 text-center mb-4">
-              <div>
-                <div className="text-xs text-gray-500 mb-1">รวมทั้งหมด</div>
-                <div className="text-2xl font-black text-brand-400">฿{grandDay.total.toLocaleString()}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-1 flex items-center justify-center gap-1"><HandMetal size={10}/> ตอบมือ</div>
-                <div className="text-xl font-black text-purple-400">{grandDay.manual.toLocaleString()}</div>
-                <div className="text-xs text-gray-500">บ้าน</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-1 flex items-center justify-center gap-1"><Bot size={10}/> AI</div>
-                <div className="text-xl font-black text-emerald-400">{grandDay.ai.toLocaleString()}</div>
-                <div className="text-xs text-gray-500">บ้าน</div>
-              </div>
-            </div>
-            {/* per-admin mini table */}
-            <div className="space-y-2">
-              {admins.map(u => {
-                const cm = adminCommMap[u.id]
-                const hasData = cm.entries > 0
-                return (
-                  <div key={u.id} className={`flex items-center gap-3 p-2.5 rounded-lg ${hasData ? 'bg-indigo-50' : 'bg-indigo-50/50 opacity-50'}`}>
-                    <Avatar name={u.avatar || u.name} size="sm"/>
-                    <span className="text-sm font-semibold flex-1 truncate">{u.name}</span>
-                    {hasData ? (
-                      <>
-                        <span className="text-xs text-purple-400">{cm.manual} มือ</span>
-                        <span className="text-xs text-emerald-400">{cm.ai} AI</span>
-                        <span className="font-black text-brand-400">฿{cm.total.toLocaleString()}</span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-gray-500">ยังไม่ลงข้อมูล</span>
-                    )}
-                  </div>
-                )
-              })}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+              {[
+                { e:'💎', l:'รวมทั้งหมด', v:`฿${grandDay.total.toLocaleString()}`,  c:'#fde68a' },
+                { e:'🖐',  l:'ตอบมือ',    v:`${grandDay.manual} บ้าน`,              c:'#c4b5fd' },
+                { e:'🤖', l:'AI',         v:`${grandDay.ai} บ้าน`,                  c:'#86efac' },
+              ].map((k,i)=>(
+                <div key={i} style={{ background:'rgba(255,255,255,.1)', borderRadius:12, padding:'14px', border:'1px solid rgba(255,255,255,.1)' }}>
+                  <div style={{ fontSize:22, marginBottom:6 }}>{k.e}</div>
+                  <div style={{ fontSize:20, fontWeight:900, color:k.c }}>{k.v}</div>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,.5)', marginTop:3 }}>{k.l}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* ══════════════ LEAVE ══════════════ */}
+      {/* ══ LEAVE ════════════════════════════════════════ */}
       {tab === 'leave' && (
-        <div className="space-y-4">
-          {/* filter month */}
-          <div className="card flex items-center gap-3">
-            <label className="label" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>เดือน</label>
-            <input type="month" className="input" style={{ width: 'auto' }}
-              value={filterMonth} onChange={e => setFilterMonth(e.target.value)}/>
-            <div className="text-xs text-gray-500 ml-auto">
-              {monthLeaves.length} รายการ · อนุมัติ {monthLeaves.filter(l => l.status === 'approved').length} · รอ {monthLeaves.filter(l => l.status === 'pending').length}
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {pendingLeaves.length === 0 && monthLeaves.length === 0 ? (
+            <div style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'1.5px solid #bbf7d0', borderRadius:18, padding:'48px 24px', textAlign:'center' }}>
+              <div style={{ fontSize:48, marginBottom:12 }}>🌴</div>
+              <div style={{ fontSize:17, fontWeight:900, color:'#1e1b4b', marginBottom:6 }}>ไม่มีรายการลา</div>
+              <div style={{ fontSize:13, color:'#9ca3af' }}>เดือนนี้ยังไม่มีการขอลา</div>
             </div>
-          </div>
-
-          {/* Pending approval */}
-          {pendingLeaves.length > 0 && (
-            <div className="card border-orange-500/30">
-              <div className="text-sm font-bold text-orange-400 mb-3 flex items-center gap-2">
-                <Clock size={15}/> รออนุมัติ ({pendingLeaves.length} รายการ)
-              </div>
-              <div className="space-y-2">
-                {pendingLeaves.map(l => (
-                  <LeaveRow key={l.id} leave={l} getName={getUserName}
-                    onApprove={() => handleApprove(l.id)}
-                    onReject={() => handleReject(l.id)}
-                    saving={saving} showActions/>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Approved this month */}
-          <div className="card">
-            <div className="text-sm font-bold mb-3 flex items-center gap-2">
-              <CheckCircle size={15} className="text-emerald-400"/> ลาที่อนุมัติ — {filterMonth}
-            </div>
-            {monthLeaves.filter(l => l.status === 'approved').length === 0
-              ? <Empty icon={CalendarDays} title="ไม่มีรายการลาในเดือนนี้"/>
-              : <div className="space-y-2">
-                  {monthLeaves.filter(l => l.status === 'approved').map(l => (
-                    <LeaveRow key={l.id} leave={l} getName={getUserName}/>
-                  ))}
-                </div>
-            }
-          </div>
-
-          {/* On leave today */}
-          {activeLeaves.length > 0 && (
-            <div className="card border-orange-500/30 bg-orange-500/5">
-              <div className="text-sm font-bold text-orange-400 mb-3 flex items-center gap-2">
-                <Calendar size={15}/> ลาวันนี้ ({activeLeaves.length} คน)
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {activeLeaves.map(l => {
-                  const u = users.find(u => u.id === l.employeeId)
-                  return (
-                    <div key={l.id} className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 rounded-xl px-3 py-2">
-                      <Avatar name={u?.avatar || u?.name || '?'} size="sm"/>
-                      <div>
-                        <div className="text-sm font-semibold">{u?.name || '?'}</div>
-                        <div className="text-xs text-gray-500">ถึง {format(parseISO(l.endDate), 'd MMM', { locale: th })}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══════════════ COMMISSION ══════════════ */}
-      {tab === 'commission' && (
-        <div className="space-y-4">
-          <div className="card flex items-center gap-3 flex-wrap">
-            <div>
-              <label className="label" style={{ marginBottom: 0 }}>วันที่</label>
-              <input type="date" className="input mt-1" style={{ width: 'auto' }}
-                value={filterDate} onChange={e => setFilterDate(e.target.value)}/>
-            </div>
-            <div>
-              <label className="label" style={{ marginBottom: 0 }}>หรือเดือน</label>
-              <input type="month" className="input mt-1" style={{ width: 'auto' }}
-                value={filterMonth} onChange={e => setFilterMonth(e.target.value)}/>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {admins.map(u => {
-              const cm = adminCommMap[u.id]
-              const exp = expandUid === u.id
-              return (
-                <div key={u.id} className="card p-0 overflow-hidden">
-                  {/* Summary row */}
-                  <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-indigo-50/50"
-                    onClick={() => setExpandUid(exp ? null : u.id)}>
-                    <Avatar name={u.avatar || u.name} size="md"/>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold">{u.name}</div>
-                      <div className="text-xs text-gray-500">{ROLES[u.role]}</div>
-                    </div>
-                    <div className="flex items-center gap-5">
-                      <div className="text-center hidden sm:block">
-                        <div className="text-xs text-gray-500 mb-0.5 flex items-center gap-1 justify-center"><HandMetal size={9}/> มือ</div>
-                        <div className="font-bold text-purple-400">{cm.manual}</div>
-                      </div>
-                      <div className="text-center hidden sm:block">
-                        <div className="text-xs text-gray-500 mb-0.5 flex items-center gap-1 justify-center"><Bot size={9}/> AI</div>
-                        <div className="font-bold text-emerald-400">{cm.ai}</div>
-                      </div>
-                      <div className="text-center hidden md:block">
-                        <div className="text-xs text-gray-500 mb-0.5">ยกเลิก</div>
-                        <div className="font-bold text-red-400">{cm.cancel}</div>
-                      </div>
-                      <div className="text-right">
-                        {cm.entries > 0
-                          ? <div className="text-xl font-black text-brand-400">฿{cm.total.toLocaleString()}</div>
-                          : <div className="text-sm text-gray-500">ยังไม่ลงข้อมูล</div>
-                        }
-                      </div>
-                      {exp ? <ChevronUp size={16} className="text-gray-500"/> : <ChevronDown size={16} className="text-gray-500"/>}
-                    </div>
+          ) : (
+            <>
+              {pendingLeaves.length > 0 && (
+                <div style={{ background:'#fff', borderRadius:18, border:'1.5px solid #fde68a', overflow:'hidden' }}>
+                  <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', fontSize:14, fontWeight:900, color:'#b45309' }}>
+                    ⏳ รออนุมัติ ({pendingLeaves.length})
                   </div>
-
-                  {/* Expanded records */}
-                  {exp && (
-                    <div className="border-t border-indigo-100 bg-white">
-                      {cm.records.length === 0
-                        ? <div className="py-8"><Empty icon={TrendingUp} title="ยังไม่มีข้อมูลวันที่เลือก"/></div>
-                        : <div className="table-wrap">
-                            <table>
-                              <thead><tr>
-                                <th>วันที่</th><th>เพจ</th>
-                                <th className="text-right text-purple-400">มือ (บ้าน)</th>
-                                <th className="text-right text-purple-400">฿มือ</th>
-                                <th className="text-right text-emerald-400">AI (บ้าน)</th>
-                                <th className="text-right text-emerald-400">฿AI</th>
-                                <th className="text-right text-red-400">ยกเลิก</th>
-                                <th className="text-right text-orange-400">ไม่ชัด</th>
-                                <th className="text-right text-brand-400">รวม</th>
-                                <th>หมายเหตุ</th>
-                              </tr></thead>
-                              <tbody>
-                                {cm.records.map(c => (
-                                  <tr key={c.id}>
-                                    <td className="text-xs text-gray-500">{c.date}</td>
-                                    <td className="text-xs max-w-[120px] truncate">{getPageName(c.pageId)}</td>
-                                    <td className="text-right text-purple-400">{c.manualOrders || 0}</td>
-                                    <td className="text-right text-xs text-purple-300">฿{(c.manualTotal || 0).toLocaleString()}</td>
-                                    <td className="text-right text-emerald-400">{c.aiOrders || 0}</td>
-                                    <td className="text-right text-xs text-emerald-300">฿{(c.aiTotal || 0).toLocaleString()}</td>
-                                    <td className="text-right text-red-400">{c.cancelOrders || 0}</td>
-                                    <td className="text-right text-orange-400">{c.unclearOrders || 0}</td>
-                                    <td className="text-right font-black text-brand-400">฿{(c.total || 0).toLocaleString()}</td>
-                                    <td className="text-xs text-gray-500 max-w-[100px] truncate">{c.note || '—'}</td>
-                                  </tr>
-                                ))}
-                                <tr className="bg-indigo-50">
-                                  <td colSpan={2} className="text-xs font-bold text-gray-500">รวม</td>
-                                  <td className="text-right font-black text-purple-400">{cm.manual}</td>
-                                  <td className="text-right font-bold text-purple-300">฿{cm.manualComm.toLocaleString()}</td>
-                                  <td className="text-right font-black text-emerald-400">{cm.ai}</td>
-                                  <td className="text-right font-bold text-emerald-300">฿{cm.aiComm.toLocaleString()}</td>
-                                  <td className="text-right font-bold text-red-400">{cm.cancel}</td>
-                                  <td className="text-right font-bold text-orange-400">{cm.unclear}</td>
-                                  <td className="text-right font-black text-brand-400 text-base">฿{cm.total.toLocaleString()}</td>
-                                  <td/>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                      }
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════ PAGES STATUS ══════════════ */}
-      {tab === 'pages' && (
-        <div className="space-y-4">
-          {/* KPI */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatBox val={pages.length} label="เพจทั้งหมด" color="text-gray-200" icon={<BookOpen size={14}/>}/>
-            <StatBox val={pages.filter(p => p.type === 'main').length} label="เพจหลัก" color="text-brand-400" icon={<Star size={14}/>}/>
-            <StatBox val={pages.filter(p => p.type === 'test').length} label="เพจทดสอบ" color="text-amber-400" icon={<TestTube size={14}/>}/>
-            <StatBox val={pages.filter(p => !p.assignedTo?.length).length} label="ยังไม่มอบหมาย" color="text-red-400" icon={<AlertCircle size={14}/>}/>
-          </div>
-
-          {/* Per-admin page status */}
-          <div className="space-y-3">
-            {admins.map(u => {
-              const pg = adminPageMap[u.id]
-              const lv = adminLeaveMap[u.id]
-              return (
-                <div key={u.id} className={`card ${lv.isOnLeaveToday ? 'border-orange-500/30 bg-orange-500/5' : ''}`}>
-                  <div className="flex items-start gap-4">
-                    <div className="relative flex-shrink-0">
-                      <Avatar name={u.avatar || u.name} size="md"/>
-                      {lv.isOnLeaveToday && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center text-[8px]">ลา</div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <span className="font-bold">{u.name}</span>
-                        <span className="text-xs text-gray-500">{ROLES[u.role]}</span>
-                        {lv.isOnLeaveToday && <span className="badge-orange text-[10px]">ลาวันนี้</span>}
-                        <span className="badge-gray text-[10px]">{pg.all.length} เพจ</span>
-                      </div>
-                      {pg.all.length === 0 ? (
-                        <p className="text-sm text-red-400">ยังไม่ได้รับมอบหมายเพจ</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {pg.all.map(p => (
-                            <div key={p.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${
-                              p.type === 'main'
-                                ? 'bg-brand-500/10 border-brand-500/30 text-brand-300'
-                                : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                            }`}>
-                              {p.type === 'main' ? <Star size={10}/> : <TestTube size={10}/>}
-                              {p.name}
-                              <span className={`ml-1 text-[10px] ${p.status === 'active' ? 'text-emerald-400' : 'text-gray-500'}`}>
-                                {p.status === 'active' ? '●' : '○'}
-                              </span>
-                            </div>
-                          ))}
+                  <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:10 }}>
+                    {pendingLeaves.map(l => (
+                      <div key={l.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'linear-gradient(135deg,#fffbeb,#fef9ec)', border:'1.5px solid #fde68a', borderRadius:14, flexWrap:'wrap' }}>
+                        <div style={{ width:38, height:38, borderRadius:'50%', background:'linear-gradient(135deg,#d97706,#f59e0b)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:900, flexShrink:0 }}>
+                          {getUserName(l.employeeId).slice(0,2)}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════ LEAVE HISTORY ══════════════ */}
-      {tab === 'leaveHistory' && (
-        <div className="space-y-3">
-          {/* Leave frequency ranking */}
-          <div className="card">
-            <div className="text-sm font-bold mb-4 flex items-center gap-2">
-              <BarChart3 size={15} className="text-brand-400"/> อันดับการลา (ลาบ่อยสุด)
-            </div>
-            <div className="space-y-2.5">
-              {admins
-                .map(u => ({ ...u, ...adminLeaveMap[u.id] }))
-                .sort((a, b) => b.totalDays - a.totalDays)
-                .map((u, i) => (
-                  <div key={u.id} className="flex items-center gap-3">
-                    <span className="text-base w-6 text-center">{i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`}</span>
-                    <Avatar name={u.avatar || u.name} size="sm"/>
-                    <span className="flex-1 text-sm font-semibold">{u.name}</span>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-gray-500">{u.total} ครั้ง</span>
-                      <span className="text-emerald-400">{u.approved} อนุมัติ</span>
-                      <span className={`font-black ${u.totalDays > 5 ? 'text-orange-400' : 'text-gray-300'}`}>
-                        {u.totalDays} วัน
-                      </span>
-                    </div>
-                  </div>
-                ))
-              }
-            </div>
-          </div>
-
-          {/* Per-admin leave history */}
-          <div className="space-y-3">
-            {admins.map(u => {
-              const lv = adminLeaveMap[u.id]
-              const exp = expandUid === u.id
-              return (
-                <div key={u.id} className="card p-0 overflow-hidden">
-                  <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-indigo-50/50"
-                    onClick={() => setExpandUid(exp ? null : u.id)}>
-                    <Avatar name={u.avatar || u.name} size="md"/>
-                    <div className="flex-1">
-                      <div className="font-bold">{u.name}</div>
-                      <div className="text-xs text-gray-500">{ROLES[u.role]}</div>
-                    </div>
-                    <div className="flex gap-4 items-center">
-                      <MiniStat label="รวม"      val={lv.total}    color="text-gray-300"/>
-                      <MiniStat label="อนุมัติ"  val={lv.approved} color="text-emerald-400"/>
-                      <MiniStat label="รอ"       val={lv.pending}  color={lv.pending > 0 ? 'text-orange-400' : 'text-gray-500'}/>
-                      <MiniStat label="วันที่ใช้" val={`${lv.totalDays}วัน`} color={lv.totalDays > 5 ? 'text-orange-400' : 'text-brand-400'}/>
-                      {exp ? <ChevronUp size={16} className="text-gray-500"/> : <ChevronDown size={16} className="text-gray-500"/>}
-                    </div>
-                  </div>
-
-                  {exp && (
-                    <div className="border-t border-indigo-100 bg-white">
-                      {lv.records.length === 0
-                        ? <div className="py-6"><Empty icon={CalendarDays} title="ไม่มีประวัติการลา"/></div>
-                        : <div className="table-wrap">
-                            <table>
-                              <thead><tr>
-                                <th>วันที่เริ่ม</th><th>วันที่สิ้นสุด</th>
-                                <th className="text-right">จำนวนวัน</th>
-                                <th>ประเภท</th><th>เหตุผล</th>
-                                <th>สถานะ</th><th>อนุมัติโดย</th>
-                              </tr></thead>
-                              <tbody>
-                                {lv.records.map(l => {
-                                  const days = countDays(l.startDate, l.endDate)
-                                  const st = { pending:'badge-orange', approved:'badge-green', rejected:'badge-red' }
-                                  const stLabel = { pending:'รออนุมัติ', approved:'อนุมัติ', rejected:'ไม่อนุมัติ' }
-                                  return (
-                                    <tr key={l.id}>
-                                      <td className="text-xs">{l.startDate}</td>
-                                      <td className="text-xs">{l.endDate}</td>
-                                      <td className="text-right font-bold text-brand-400">{days}</td>
-                                      <td className="text-xs">{l.leaveType || '—'}</td>
-                                      <td className="text-xs max-w-[150px] truncate">{l.reason}</td>
-                                      <td><span className={st[l.status] || 'badge-gray'}>{stLabel[l.status] || l.status}</span></td>
-                                      <td className="text-xs">{l.approvedBy ? getUserName(l.approvedBy) : '—'}</td>
-                                    </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{getUserName(l.employeeId)}</div>
+                          <div style={{ fontSize:12, color:'#6b7280', marginTop:2 }}>
+                            {l.startDate} — {l.endDate} · {l.reason||'ไม่ระบุเหตุผล'}
                           </div>
-                      }
-                    </div>
-                  )}
+                        </div>
+                        <div style={{ display:'flex', gap:8 }}>
+                          <button onClick={() => handleApprove(l.id)} disabled={saving}
+                            style={{ background:'linear-gradient(135deg,#059669,#10b981)', border:'none', borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:12.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5 }}>
+                            <CheckCircle size={13}/> อนุมัติ
+                          </button>
+                          <button onClick={() => handleReject(l.id)} disabled={saving}
+                            style={{ background:'linear-gradient(135deg,#be123c,#e11d48)', border:'none', borderRadius:9, padding:'7px 14px', cursor:'pointer', fontSize:12.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5 }}>
+                            <XCircle size={13}/> ปฏิเสธ
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )
-            })}
+              )}
+              {monthLeaves.filter(l=>l.status!=='pending').length > 0 && (
+                <div style={{ background:'#fff', borderRadius:18, border:'1.5px solid #e0e7ff', overflow:'hidden' }}>
+                  <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', padding:'12px 18px', borderBottom:'1.5px solid #e0e7ff', fontSize:14, fontWeight:900, color:'#4338ca' }}>
+                    📋 ประวัติการลาเดือนนี้
+                  </div>
+                  <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+                    {monthLeaves.filter(l=>l.status!=='pending').map(l => {
+                      const st = l.status==='approved'
+                        ? {bg:'#f0fdf4',border:'#bbf7d0',c:'#059669',label:'✅ อนุมัติ'}
+                        : {bg:'#fff1f2',border:'#fecdd3',c:'#be123c',label:'❌ ปฏิเสธ'}
+                      return (
+                        <div key={l.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:st.bg, border:`1.5px solid ${st.border}`, borderRadius:12, flexWrap:'wrap' }}>
+                          <div style={{ width:34, height:34, borderRadius:'50%', background:`linear-gradient(135deg,${st.c},${st.c}cc)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:900, flexShrink:0 }}>
+                            {getUserName(l.employeeId).slice(0,2)}
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:13.5, fontWeight:700, color:'#1e1b4b' }}>{getUserName(l.employeeId)}</div>
+                            <div style={{ fontSize:11.5, color:'#6b7280', marginTop:2 }}>{l.startDate} – {l.endDate}</div>
+                          </div>
+                          <span style={{ background:st.bg, color:st.c, border:`1px solid ${st.border}`, borderRadius:99, padding:'2px 10px', fontSize:12, fontWeight:700 }}>{st.label}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ══ COMMISSION ═══════════════════════════════════ */}
+      {tab === 'commission' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ fontSize:14, fontWeight:900, color:'#1e1b4b' }}>💰 ค่าคอมรายวัน</div>
+            <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)}
+              style={{ marginLeft:'auto', padding:'7px 11px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
           </div>
+          {admins.map(u => {
+            const cm = adminCommMap[u.id]
+            const isExpand = expandUid === u.id
+            return (
+              <div key={u.id} style={{ background:'#fff', borderRadius:18, border:'1.5px solid #e0e7ff', overflow:'hidden' }}>
+                <div style={{ padding:'14px 18px', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }} onClick={()=>setExpandUid(isExpand?null:u.id)}>
+                  <div style={{ width:40, height:40, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:900, flexShrink:0 }}>
+                    {(u.avatar||u.name||'?').slice(0,2)}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{u.name}</div>
+                    <div style={{ fontSize:12, color:'#6b7280' }}>{cm.entries} รายการ · มือ {cm.manual} · AI {cm.ai}</div>
+                  </div>
+                  <div style={{ fontSize:18, fontWeight:900, color:'#4338ca' }}>฿{(cm.total||0).toLocaleString()}</div>
+                  {isExpand ? <ChevronUp size={16} style={{color:'#9ca3af'}}/> : <ChevronDown size={16} style={{color:'#9ca3af'}}/>}
+                </div>
+                {isExpand && cm.records.length > 0 && (
+                  <div style={{ borderTop:'1px solid #f0f4ff', padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+                    {cm.records.map((c,ci)=>(
+                      <div key={ci} style={{ background:'linear-gradient(135deg,#fafbff,#f0f4ff)', borderRadius:12, padding:'10px 14px', display:'flex', gap:10, flexWrap:'wrap' }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:12.5, fontWeight:700, color:'#4338ca' }}>{getPageName(c.pageId)}</div>
+                          <div style={{ fontSize:11.5, color:'#6b7280', marginTop:2 }}>มือ {c.manualOrders||0} · AI {c.aiOrders||0} · {c.shift==='night'?'🌙 กะดึก':'☀️ กลางวัน'}</div>
+                        </div>
+                        <div style={{ fontSize:15, fontWeight:900, color:'#6366f1' }}>฿{(c.total||0).toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
-    </div>
-  )
-}
 
-// ── Helper components ─────────────────────────────────
-function MiniBox({ val, label, color, icon }) {
-  return (
-    <div className="bg-indigo-50 rounded-lg p-2 text-center">
-      <div className={`flex items-center justify-center gap-0.5 text-[10px] text-gray-500 mb-0.5 ${color}`}>{icon}{label}</div>
-      <div className={`font-black text-sm ${color}`}>{val}</div>
-    </div>
-  )
-}
-
-function StatBox({ val, label, color, icon }) {
-  return (
-    <div className="card text-center py-3">
-      <div className={`flex items-center justify-center gap-1 text-xs text-gray-500 mb-1 ${color}`}>{icon}{label}</div>
-      <div className={`text-2xl font-black ${color}`}>{val}</div>
-    </div>
-  )
-}
-
-function MiniStat({ label, val, color }) {
-  return (
-    <div className="text-center">
-      <div className="text-[10px] text-gray-500 mb-0.5">{label}</div>
-      <div className={`font-black text-sm ${color}`}>{val}</div>
-    </div>
-  )
-}
-
-function LeaveRow({ leave: l, getName, onApprove, onReject, saving, showActions }) {
-  const days = countDays(l.startDate, l.endDate)
-  const ST = { pending: 'badge-orange', approved: 'badge-green', rejected: 'badge-red' }
-  const STL = { pending: 'รออนุมัติ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ' }
-  return (
-    <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200">
-      <Avatar name={getName(l.employeeId).slice(0, 2)} size="sm"/>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-bold">{getName(l.employeeId)}</div>
-        <div className="text-xs text-gray-500">
-          {l.startDate === l.endDate
-            ? format(parseISO(l.startDate), 'd MMM yyyy', { locale: th })
-            : `${format(parseISO(l.startDate), 'd MMM', { locale: th })} – ${format(parseISO(l.endDate), 'd MMM yyyy', { locale: th })}`
-          } · {days} วัน · {l.reason}
-        </div>
-      </div>
-      <span className={ST[l.status] || 'badge-gray'}>{STL[l.status] || l.status}</span>
-      {showActions && l.status === 'pending' && (
-        <div className="flex gap-1.5">
-          <button className="btn btn-success btn-sm" onClick={onApprove} disabled={saving}>
-            <CheckCircle size={13}/> อนุมัติ
-          </button>
-          <button className="btn btn-danger btn-sm" onClick={onReject} disabled={saving}>
-            <XCircle size={13}/> ปฏิเสธ
-          </button>
+      {/* ══ PAGES ════════════════════════════════════════ */}
+      {tab === 'pages' && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:14 }}>
+          {admins.map((u,ui) => {
+            const pg = adminPageMap[u.id]
+            const colors = ['#6366f1','#0284c7','#059669','#d97706','#be123c','#7c3aed']
+            const col = colors[ui%colors.length]
+            return (
+              <div key={u.id} style={{ background:'#fff', borderRadius:18, border:`1.5px solid ${col}22`, borderLeft:`5px solid ${col}`, overflow:'hidden', boxShadow:`0 2px 12px ${col}12` }}>
+                <div style={{ padding:'14px 16px', borderBottom:'1px solid #f0f4ff', display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:`linear-gradient(135deg,${col},${col}cc)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:900 }}>
+                    {(u.avatar||u.name||'?').slice(0,2)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{u.name}</div>
+                    <div style={{ fontSize:11.5, color:'#6b7280' }}>{pg.all.length} เพจ</div>
+                  </div>
+                </div>
+                <div style={{ padding:'12px 14px' }}>
+                  {pg.all.length === 0
+                    ? <div style={{ fontSize:12.5, color:'#9ca3af', textAlign:'center', padding:'12px 0' }}>ยังไม่มีเพจที่รับผิดชอบ</div>
+                    : <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                        {pg.all.map(p=>(
+                          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'linear-gradient(135deg,#fafbff,#f0f4ff)', borderRadius:10, border:'1px solid #e0e7ff' }}>
+                            <span style={{ fontSize:16 }}>{p.type==='main'?'⭐':'🧪'}</span>
+                            <span style={{ fontSize:13, fontWeight:600, color:'#1e1b4b', flex:1 }}>{p.name}</span>
+                            <span style={{ background:p.status==='active'?'#f0fdf4':'#fff1f2', color:p.status==='active'?'#059669':'#be123c', border:`1px solid ${p.status==='active'?'#bbf7d0':'#fecdd3'}`, borderRadius:99, padding:'1px 8px', fontSize:11, fontWeight:700 }}>
+                              {p.status==='active'?'🟢 ใช้งาน':'🔴 ปิด'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                  }
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
+
+      {/* ══ LEAVE HISTORY ════════════════════════════════ */}
+      {tab === 'leaveHistory' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ fontSize:14, fontWeight:900, color:'#1e1b4b' }}>📋 ประวัติการลาทั้งหมด</div>
+            <input type="month" value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}
+              style={{ marginLeft:'auto', padding:'7px 11px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+          </div>
+          {admins.map((u,ui)=>{
+            const ul = monthLeaves.filter(l=>l.employeeId===u.id)
+            if (ul.length===0) return null
+            const colors = ['#6366f1','#0284c7','#059669','#d97706','#be123c','#7c3aed']
+            const col = colors[ui%colors.length]
+            return (
+              <div key={u.id} style={{ background:'#fff', borderRadius:18, border:'1.5px solid #e0e7ff', overflow:'hidden' }}>
+                <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', padding:'12px 18px', borderBottom:'1.5px solid #e0e7ff', display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${col},${col}cc)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:900 }}>
+                    {(u.avatar||u.name).slice(0,2)}
+                  </div>
+                  <span style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{u.name}</span>
+                  <span style={{ background:'#eef2ff', color:'#4338ca', border:'1px solid #c7d2fe', borderRadius:99, padding:'1px 8px', fontSize:12, fontWeight:700, marginLeft:'auto' }}>{ul.length} รายการ</span>
+                </div>
+                <div style={{ padding:'10px 12px', display:'flex', flexDirection:'column', gap:6 }}>
+                  {ul.map(l=>{
+                    const st = l.status==='approved'?{c:'#059669',bg:'#f0fdf4',b:'#bbf7d0',e:'✅'}:l.status==='pending'?{c:'#b45309',bg:'#fffbeb',b:'#fde68a',e:'⏳'}:{c:'#be123c',bg:'#fff1f2',b:'#fecdd3',e:'❌'}
+                    return (
+                      <div key={l.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', background:st.bg, border:`1px solid ${st.b}`, borderRadius:11 }}>
+                        <span style={{ fontSize:16 }}>{st.e}</span>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:12.5, fontWeight:700, color:'#1e1b4b' }}>{l.startDate}{l.startDate!==l.endDate?` – ${l.endDate}`:''}</div>
+                          <div style={{ fontSize:11.5, color:'#6b7280', marginTop:1 }}>{l.reason||'ไม่ระบุ'}</div>
+                        </div>
+                        <span style={{ fontSize:11, fontWeight:700, color:st.c }}>{l.status==='approved'?'อนุมัติ':l.status==='pending'?'รอ':'ปฏิเสธ'}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
     </div>
   )
 }
