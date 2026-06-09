@@ -57,8 +57,9 @@ export default function Commission() {
     cancelOrders:'', unclearOrders:'',
     isNightSplit:false,
     manualBefore:'', aiBefore:'', manualAfter:'', aiAfter:'',
-    proOrders:'',    // ออเดอร์โปร (ไม่นับในยอดรวม)
-    saleAmount:'',   // ยอดขาย (แสดงเฉพาะเจ้าของ)
+    proOrders:'',    // ออเดอร์โปร
+    proItems:[],     // รายการสินค้าโปร [{name,qty,price}]
+    saleAmount:'',   // ยอดขาย
     note:'',
   })
   const [form, setForm] = useState(makeBlank)
@@ -315,6 +316,50 @@ export default function Commission() {
 
     setCompareResult(result)
     setCompareDate(d)
+  }
+
+  // บันทึก "ไม่มีเพจตอบ" (แยกจากวันลา เป็น commission record พิเศษ)
+  const handleNoPage = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await createCommission({
+        date: noPageDate,
+        adminId: myUid,
+        pageId: '',
+        shift: 'day',
+        manualOrders: 0, aiOrders: 0,
+        manualRate: 0, aiRate: 0,
+        total: 0, manualTotal: 0, aiTotal: 0,
+        status: 'no_page',     // สถานะพิเศษ
+        note: noPageNote || 'ไม่มีเพจตอบ',
+      })
+      notifyCustom({ type:'system', title:'📭 ไม่มีเพจตอบ', message:`${profile?.name} แจ้งว่าวันที่ ${noPageDate} ไม่มีเพจตอบ`, link:'/commission', targetRoles:['superadmin','head_admin'] })
+      setShowNoPage(false); setNoPageNote('')
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  // ── บันทึกออเดอร์หลังบ้าน ─────────────────────────
+  const handleSaveBackendOrder = async () => {
+    if (!backendForm?.pageId || saving) return
+    setSaving(true)
+    try {
+      const date = filters.date || analysisDate || today
+      await importBackendOrders([{
+        pageId:      backendForm.pageId,
+        date,
+        actualCount: backendForm.totalOrders || 0,
+        totalOrders: backendForm.totalOrders || 0,
+        promos:      backendForm.promos || [],
+        saleAmount:  backendForm.saleAmount || 0,
+        note:        backendForm.note || '',
+        importedAt:  new Date(),
+        importedBy:  myUid,
+      }])
+      setBackendForm({ pageId:'', totalOrders:0, saleAmount:0, promos:[], note:'' })
+      setErr('')
+    } catch(e) { setErr(e.message) }
+    finally { setSaving(false) }
   }
 
   const openEdit = (item) => { setForm({...item, isNightSplit:false}); setEditItem(item); setErr(''); setShowForm(true) }
@@ -651,7 +696,33 @@ export default function Commission() {
       {tab === 'orders' && (
         <>
           {/* Inline form */}
-          {showForm && (
+          {/* ══ No-Page Quick Form ══ */}
+      {showNoPage && (
+        <div style={{ background:'linear-gradient(135deg,#eff6ff,#dbeafe)', border:'2px solid #bfdbfe', borderRadius:16, padding:18, display:'flex', flexWrap:'wrap', gap:12, alignItems:'flex-end' }}>
+          <div style={{ fontSize:14, fontWeight:900, color:'#0284c7', width:'100%', display:'flex', alignItems:'center', gap:8 }}>
+            📭 แจ้ง "ไม่มีเพจตอบ" — บันทึกโดยไม่ต้องขอลา
+          </div>
+          <div>
+            <div style={{ fontSize:11, fontWeight:800, color:'#0284c7', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>วันที่</div>
+            <input type="date" value={noPageDate} onChange={e=>setNoPageDate(e.target.value)}
+              style={{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #bfdbfe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+          </div>
+          <div style={{ flex:1, minWidth:180 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'#0284c7', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>หมายเหตุ</div>
+            <input value={noPageNote} onChange={e=>setNoPageNote(e.target.value)} placeholder="เช่น ยังไม่มีเพจ, เพจปิดชั่วคราว..."
+              style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #bfdbfe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit', boxSizing:'border-box' }}/>
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={()=>setShowNoPage(false)} style={{ background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:9, padding:'8px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
+            <button onClick={handleNoPage} disabled={saving}
+              style={{ background:'linear-gradient(135deg,#0284c7,#0ea5e9)', border:'none', borderRadius:9, padding:'8px 18px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit', boxShadow:'0 3px 10px rgba(2,132,199,.3)' }}>
+              📭 บันทึก
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
             <div style={{ background:'#fff', border:'2px solid #6366f1', borderRadius:20, padding:26, boxShadow:'0 8px 32px rgba(99,102,241,.12)' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:22 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -670,7 +741,9 @@ export default function Commission() {
               {/* Row 1: วันที่ + แอดมิน + กะ */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14, marginBottom:14 }}>
                 <div>
-                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📅 วันที่ *</label>
+                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>
+                    📅 วันที่ * <span style={{ color:'#059669', fontSize:10, fontWeight:600, textTransform:'none' }}>ย้อนหลังได้</span>
+                  </label>
                   <input type="date" style={S} value={form.date} onChange={setF('date')}/>
                 </div>
                 <div>
@@ -807,6 +880,34 @@ export default function Commission() {
                   <div>
                     <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#059669', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>💵 ยอดขาย (฿)</label>
                     <input type="number" style={{...S}} value={form.saleAmount||''} onChange={setF('saleAmount')} placeholder="0" min="0"/>
+                  </div>
+                </div>
+                {/* สินค้า breakdown */}
+                <div style={{ marginTop:10 }}>
+                  <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#059669', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📦 รายละเอียดสินค้า (โปร)</label>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {(form.proItems||[]).map((item,pi)=>(
+                      <div key={pi} style={{ display:'grid', gridTemplateColumns:'1fr 80px 100px 28px', gap:6, alignItems:'center' }}>
+                        <input style={{...S,fontSize:12.5}} value={item.name||''} placeholder="ชื่อสินค้า"
+                          onChange={e=>setForm(p=>{ const items=[...(p.proItems||[])]; items[pi]={...items[pi],name:e.target.value}; return {...p,proItems:items} })}/>
+                        <input type="number" style={{...S,fontSize:12.5,textAlign:'center'}} value={item.qty||''} placeholder="จำนวน" min="1"
+                          onChange={e=>setForm(p=>{ const items=[...(p.proItems||[])]; items[pi]={...items[pi],qty:parseInt(e.target.value)||0}; return {...p,proItems:items} })}/>
+                        <input type="number" style={{...S,fontSize:12.5,textAlign:'right'}} value={item.price||''} placeholder="ราคา/ชิ้น" min="0"
+                          onChange={e=>setForm(p=>{ const items=[...(p.proItems||[])]; items[pi]={...items[pi],price:parseFloat(e.target.value)||0}; return {...p,proItems:items} })}/>
+                        <button type="button" onClick={()=>setForm(p=>{ const items=[...(p.proItems||[])].filter((_,i)=>i!==pi); return {...p,proItems:items} })}
+                          style={{ background:'#fff1f2', border:'1px solid #fecdd3', borderRadius:7, width:28, height:28, cursor:'pointer', color:'#be123c', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>×</button>
+                      </div>
+                    ))}
+                    <button type="button"
+                      onClick={()=>setForm(p=>({...p,proItems:[...(p.proItems||[]),{name:'',qty:1,price:0}]}))}
+                      style={{ background:'#f0fdf4', border:'1.5px dashed #86efac', borderRadius:9, padding:'6px', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#059669', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                      + เพิ่มสินค้า
+                    </button>
+                    {(form.proItems||[]).length>0 && (
+                      <div style={{ textAlign:'right', fontSize:12.5, fontWeight:800, color:'#059669' }}>
+                        รวม: ฿{(form.proItems||[]).reduce((a,it)=>a+(it.qty||0)*(it.price||0),0).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1024,7 +1125,7 @@ export default function Commission() {
                     { e:'📉', l:'หักออเดอร์หาย',      v:`฿${Math.round(totalLost).toLocaleString()}`,    c:'#fca5a5' },
                     ...(canSeeAll ? [
                       { e:'🎯', l:'โปรรวม',           v:analysis.reduce((a,r)=>a+(r.proOrders||0),0)+' บ้าน', c:'#86efac' },
-                      { e:'💵', l:'ยอดขายรวม',         v:`฿${Math.round(analysis.reduce((a,r)=>a+(parseFloat(r.saleAmount)||0),0)).toLocaleString()}`, c:'#99f6e4' },
+                      ...(isSuperAdmin ? [{ e:'💵', l:'ยอดขายรวม', v:`฿${Math.round(analysis.reduce((a,r)=>a+(parseFloat(r.saleAmount)||0),0)).toLocaleString()}`, c:'#99f6e4' }] : []),
                     ] : []),
                     { e:'❌', l:'หักยกเลิก',           v:`฿${Math.round(totalCancel).toLocaleString()}`, c:'#fda4af' },
                     { e:'👥', l:'แอดมิน',             v:`${adminSet.size} คน`,                           c:'#fdba74' },
@@ -1228,7 +1329,7 @@ export default function Commission() {
               { e:'📅', l:`ลงข้อมูล ${activeMonth}`, v:`${myMonth.length} ครั้ง`, c:'#7c3aed', bg:'linear-gradient(135deg,#f5f3ff,#ede9fe)', b:'#ddd6fe' },
               { e:'📋', l:'ลงข้อมูลเดือนนี้', v:`${myMonth.length} ครั้ง`, c:'#b45309', bg:'linear-gradient(135deg,#fffbeb,#fef3c7)', b:'#fde68a' },
               { e:'🎯', l:'ออเดอร์โปร',      v:myComm.reduce((a,c)=>a+(parseInt(c.proOrders)||0),0), c:'#059669', bg:'linear-gradient(135deg,#f0fdf4,#dcfce7)', b:'#bbf7d0' },
-              { e:'💵', l:'ยอดขายรวม',       v:`฿${myComm.filter(c=>c.adminId===myUid).reduce((a,c)=>a+(parseFloat(c.saleAmount)||0),0).toLocaleString()}`, c:'#0f766e', bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', b:'#99f6e4' },
+              ...(isSuperAdmin ? [{ e:'💵', l:'ยอดขายรวม', v:`฿${myComm.reduce((a,c)=>a+(parseFloat(c.saleAmount)||0),0).toLocaleString()}`, c:'#0f766e', bg:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', b:'#99f6e4' }] : []),
             ].map((k,i)=>(
               <div key={i} style={{ background:k.bg, border:`1.5px solid ${k.b}`, borderRadius:14, padding:'14px 16px' }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{k.e}</div>
@@ -1248,7 +1349,10 @@ export default function Commission() {
               <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
                 <thead style={{ position:'sticky', top:0 }}>
                   <tr style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', borderBottom:'2px solid #e0e7ff' }}>
-                    {['📅 วันที่','📄 เพจ','🌅 กะ','🖐 มือ','🤖 AI','🎯 โปร','💵 ยอดขาย','💎 รวม','📝 หมายเหตุ'].map((h,i)=>(
+                    {(isSuperAdmin
+                        ? ['📅 วันที่','📄 เพจ','🌅 กะ','🖐 มือ','🤖 AI','🎯 โปร','💵 ยอดขาย','💎 รวม','📝 หมายเหตุ']
+                        : ['📅 วันที่','📄 เพจ','🌅 กะ','🖐 มือ','🤖 AI','🎯 โปร','💎 รวม','📝 หมายเหตุ']
+                      ).map((h,i)=>(
                       <th key={i} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -1266,7 +1370,7 @@ export default function Commission() {
                       <td style={{ padding:'10px 12px', color:'#7c3aed', fontWeight:700 }}>{c.manualOrders||0}</td>
                       <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.aiOrders||0}</td>
                       <td style={{ padding:'10px 12px', color:'#059669', fontWeight:700 }}>{c.proOrders||'—'}</td>
-                      <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.saleAmount?`฿${parseFloat(c.saleAmount).toLocaleString()}`:'—'}</td>
+                      {isSuperAdmin && <td style={{ padding:'10px 12px', color:'#0f766e', fontWeight:700 }}>{c.saleAmount?`฿${parseFloat(c.saleAmount).toLocaleString()}`:'—'}</td>}
                       <td style={{ padding:'10px 12px', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{calcTotal(c).toLocaleString()}</td>
                       <td style={{ padding:'10px 12px', fontSize:12, color:'#6b7280' }}>{c.note||'—'}</td>
                     </tr>
@@ -1423,10 +1527,13 @@ export default function Commission() {
                         <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#7c3aed' }}>{r.manual.toLocaleString()}</td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#0f766e' }}>{r.ai.toLocaleString()}</td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:800, color:'#1e1b4b' }}>{r.orders.toLocaleString()}</td>
-                        {canSeeAll && <>
+                        {isSuperAdmin ? <>
                           <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#059669' }}>{r.proOrders>0?r.proOrders.toLocaleString():'—'}</td>
                           <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#0f766e' }}>{r.saleAmount>0?`฿${Math.round(r.saleAmount).toLocaleString()}`:'—'}</td>
-                        </>}
+                        </> : canSeeAll ? <>
+                          <td style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#059669' }}>{r.proOrders>0?r.proOrders.toLocaleString():'—'}</td>
+                          <td/>
+                        </> : null}
                         <td style={{ padding:'10px 12px', textAlign:'right', fontSize:15, fontWeight:900, color:'#4338ca' }}>฿{Math.round(r.total).toLocaleString()}</td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:700, color:'#059669' }}>฿{r.days>0?Math.round(r.total/r.days).toLocaleString():'—'}</td>
                       </tr>
@@ -1438,14 +1545,19 @@ export default function Commission() {
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#7c3aed' }}>{summaryData.grand.manual.toLocaleString()}</td>
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#0f766e' }}>{summaryData.grand.ai.toLocaleString()}</td>
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>{summaryData.grand.orders.toLocaleString()}</td>
-                      {canSeeAll && <>
+                      {isSuperAdmin ? <>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:800, color:'#059669' }}>
                           {summaryData.grand.proOrders>0?summaryData.grand.proOrders.toLocaleString():'—'}
                         </td>
                         <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:800, color:'#0f766e' }}>
                           {summaryData.grand.saleAmount>0?`฿${Math.round(summaryData.grand.saleAmount).toLocaleString()}`:'—'}
                         </td>
-                      </>}
+                      </> : canSeeAll ? <>
+                        <td style={{ padding:'10px 12px', textAlign:'right', fontSize:13, fontWeight:800, color:'#059669' }}>
+                          {summaryData.grand.proOrders>0?summaryData.grand.proOrders.toLocaleString():'—'}
+                        </td>
+                        <td/>
+                      </> : null}
                       <td style={{ padding:'10px 12px', textAlign:'right', fontSize:16, fontWeight:900, color:'#4338ca' }}>฿{Math.round(summaryData.grand.total).toLocaleString()}</td>
                       <td/>
                     </tr>
@@ -1461,458 +1573,170 @@ export default function Commission() {
       {tab==='backend' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
-          {/* ── ส่วนบน: Import + เลือกวันที่ ── */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-
-            {/* Import Backend */}
-            <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'2px solid #fde68a', borderRadius:16, padding:18 }}>
-              <div style={{ fontSize:14, fontWeight:900, color:'#b45309', marginBottom:10, display:'flex', alignItems:'center', gap:7 }}>
-                <span>🖥️</span> Import ออเดอร์จริงจาก Backend
-              </div>
-              <input ref={backendFileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:'none' }} onChange={e=>e.target.files?.[0]&&handleBackendFile(e.target.files[0])}/>
-              {!backendPreview ? (
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  <div style={{ fontSize:12.5, color:'#92400e' }}>
-                    ไฟล์ต้องมี column: <strong>เพจ/pageId</strong>, <strong>วันที่</strong>, <strong>จำนวนออเดอร์จริง</strong>
-                  </div>
-                  <button onClick={()=>backendFileRef.current?.click()}
-                    style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:10, padding:'10px 0', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:7 }}>
-                    <Upload size={14}/> เลือกไฟล์ Excel
-                  </button>
+          {/* ══ Superadmin: ยอดขายรวม (เฉพาะ superadmin) ══ */}
+          {isSuperAdmin && (() => {
+            const monthSale = commissions.filter(c=>c.date?.startsWith(filters.month||today.slice(0,7))).reduce((a,c)=>a+(parseFloat(c.saleAmount)||0),0)
+            const totalSale = commissions.reduce((a,c)=>a+(parseFloat(c.saleAmount)||0),0)
+            const monthPro  = commissions.filter(c=>c.date?.startsWith(filters.month||today.slice(0,7))).reduce((a,c)=>a+(parseInt(c.proOrders)||0),0)
+            if (totalSale===0 && monthPro===0) return null
+            return (
+              <div style={{ background:'linear-gradient(135deg,#1e1b4b,#312e81)', borderRadius:16, padding:'16px 22px' }}>
+                <div style={{ fontSize:13, fontWeight:900, color:'rgba(255,255,255,.7)', marginBottom:12 }}>
+                  👑 สรุปยอดขาย — เฉพาะผู้ดูแลสูงสุด · {filters.month||today.slice(0,7)}
                 </div>
-              ) : (
-                <>
-                  <div style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:10, overflow:'hidden', marginBottom:12, maxHeight:160, overflowY:'auto' }}>
-                    <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                      <thead><tr style={{ background:'#fef3c7' }}>
-                        {['เพจ','วันที่','ออเดอร์จริง'].map((h,i)=><th key={i} style={{ padding:'7px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309' }}>{h}</th>)}
-                      </tr></thead>
-                      <tbody>{backendPreview.map((r,i)=>(
-                        <tr key={i} style={{ borderBottom:'1px solid #fef3c7' }}>
-                          <td style={{ padding:'7px 12px', fontSize:12.5 }}>{getPageName(r.pageId)||r.pageId}</td>
-                          <td style={{ padding:'7px 12px', fontSize:12.5, color:'#6b7280' }}>{r.date}</td>
-                          <td style={{ padding:'7px 12px', fontSize:13, fontWeight:800, color:'#b45309' }}>{r.actualCount}</td>
-                        </tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                  <div style={{ display:'flex', gap:8 }}>
-                    <button onClick={()=>setBackendPreview(null)} style={{ flex:1, background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:9, padding:'8px 0', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>ยกเลิก</button>
-                    <button onClick={handleImportBackend} disabled={saving}
-                      style={{ flex:2, background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:9, padding:'8px 0', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit' }}>
-                      ✅ Import {backendPreview.length} รายการ
-                    </button>
-                  </div>
-                </>
-              )}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10 }}>
+                  {[
+                    { e:'🎯', l:'โปร (เดือนนี้)',   v:`${monthPro} บ้าน`,                          c:'#86efac' },
+                    { e:'💵', l:'ยอดขาย (เดือนนี้)', v:`฿${Math.round(monthSale).toLocaleString()}`, c:'#99f6e4' },
+                    { e:'💰', l:'ยอดขายสะสม',        v:`฿${Math.round(totalSale).toLocaleString()}`,  c:'#fde68a' },
+                  ].map((k,i)=>(
+                    <div key={i} style={{ background:'rgba(255,255,255,.1)', borderRadius:12, padding:'12px 14px' }}>
+                      <div style={{ fontSize:20, marginBottom:4 }}>{k.e}</div>
+                      <div style={{ fontSize:17, fontWeight:900, color:k.c }}>{k.v}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.5)', marginTop:2 }}>{k.l}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* ══ ฟอร์มลงออเดอร์หลังบ้าน ══ */}
+          <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'2px solid #fde68a', borderRadius:18, padding:20 }}>
+            <div style={{ fontSize:15, fontWeight:900, color:'#b45309', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+              🖥️ ลงออเดอร์หลังบ้าน
+              <span style={{ fontSize:12, color:'#92400e', fontWeight:600 }}>· บันทึกจำนวนบ้าน + โปรโมชั่น</span>
             </div>
 
-            {/* Compare Panel */}
-            <div style={{ background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', border:'2px solid #c7d2fe', borderRadius:16, padding:18 }}>
-              <div style={{ fontSize:14, fontWeight:900, color:'#4338ca', marginBottom:10, display:'flex', alignItems:'center', gap:7 }}>
-                🔍 เปรียบเทียบ: เพจของฉัน vs Backend
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:12, marginBottom:14 }}>
+              {/* วันที่ */}
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📅 วันที่</label>
+                <input type="date" value={analysisDate} onChange={e=>setFilters(p=>({...p,date:e.target.value}))}
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #fde68a', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit', boxSizing:'border-box' }}/>
               </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {/* Mode selector */}
-                <div>
-                  <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>ช่วงเวลา</div>
-                  <div style={{ display:'flex', gap:5 }}>
-                    {[{v:'day',l:'📅 รายวัน'},{v:'week',l:'📆 สัปดาห์'},{v:'month',l:'🗓️ รายเดือน'}].map(m=>(
-                      <button key={m.v} onClick={()=>setCompareMode(m.v)}
-                        style={{ flex:1, background:compareMode===m.v?'linear-gradient(135deg,#6366f1,#7c3aed)':'#f1f5f9', border:`1.5px solid ${compareMode===m.v?'#6366f1':'#e0e7ff'}`, borderRadius:8, padding:'6px 4px', cursor:'pointer', fontSize:11.5, fontWeight:700, color:compareMode===m.v?'#fff':'#6b7280', fontFamily:'inherit' }}>
-                        {m.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              {/* เพจ */}
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📄 เพจ</label>
+                <select value={backendForm?.pageId||''} onChange={e=>setBackendForm(p=>({...p,pageId:e.target.value}))}
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #fde68a', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit', boxSizing:'border-box' }}>
+                  <option value="">เลือกเพจ</option>
+                  {pages.filter(p=>p.status==='active').map(p=>(
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              {/* จำนวนบ้านรวม */}
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>🏠 ออเดอร์รวม (บ้าน)</label>
+                <input type="number" min="0" value={backendForm?.totalOrders||''} onChange={e=>setBackendForm(p=>({...p,totalOrders:parseInt(e.target.value)||0}))}
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #fde68a', background:'#fff', fontSize:14, fontWeight:800, color:'#b45309', fontFamily:'inherit', textAlign:'center', boxSizing:'border-box' }}
+                  placeholder="0"/>
+              </div>
+              {/* ยอดขาย */}
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>💵 ยอดขาย (฿)</label>
+                <input type="number" min="0" value={backendForm?.saleAmount||''} onChange={e=>setBackendForm(p=>({...p,saleAmount:parseFloat(e.target.value)||0}))}
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #fde68a', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit', boxSizing:'border-box' }}
+                  placeholder="0"/>
+              </div>
+            </div>
 
-                {/* Date/Week/Month picker */}
-                {compareMode !== 'month' && (
-                  <div>
-                    <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>
-                      {compareMode==='week' ? 'เลือกวันในสัปดาห์' : 'วันที่'}
-                    </div>
-                    <input type="date" value={compareDate} onChange={e=>setCompareDate(e.target.value)}
-                      style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
-                    {compareMode==='week' && (
-                      <div style={{ fontSize:11, color:'#9ca3af', marginTop:3 }}>ระบบจะดึงข้อมูลทั้งสัปดาห์ที่วันนี้อยู่ (จ–อา)</div>
-                    )}
+            {/* โปรโมชั่น */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>🎯 โปรโมชั่น</label>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {(backendForm?.promos||[]).map((pr,pi)=>(
+                  <div key={pi} style={{ display:'grid', gridTemplateColumns:'1fr 100px 30px', gap:8, alignItems:'center' }}>
+                    <input value={pr.name||''} placeholder="ชื่อโปร เช่น โปร A, Flash Sale"
+                      onChange={e=>setBackendForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],name:e.target.value}; return {...p,promos:ps} })}
+                      style={{ padding:'7px 11px', borderRadius:8, border:'1.5px solid #fde68a', background:'#fff', fontSize:13, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                    <input type="number" min="0" value={pr.qty||''} placeholder="บ้าน"
+                      onChange={e=>setBackendForm(p=>{ const ps=[...(p.promos||[])]; ps[pi]={...ps[pi],qty:parseInt(e.target.value)||0}; return {...p,promos:ps} })}
+                      style={{ padding:'7px 11px', borderRadius:8, border:'1.5px solid #fde68a', background:'#fff', fontSize:13, textAlign:'center', fontWeight:800, color:'#b45309', fontFamily:'inherit' }}/>
+                    <button type="button" onClick={()=>setBackendForm(p=>({...p,promos:(p.promos||[]).filter((_,i)=>i!==pi)}))}
+                      style={{ background:'#fff1f2', border:'1px solid #fecdd3', borderRadius:7, width:30, height:30, cursor:'pointer', color:'#be123c', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>×</button>
                   </div>
-                )}
-                {compareMode === 'month' && (
-                  <div>
-                    <div style={{ fontSize:11, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>เดือน</div>
-                    <input type="month" value={compareMonth} onChange={e=>setCompareMonth(e.target.value)}
-                      style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #c7d2fe', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
-                  </div>
-                )}
-
-                {/* Page info */}
-                <div style={{ fontSize:12, color:'#6b7280', background:'#fff', borderRadius:9, padding:'8px 12px', border:'1px solid #e0e7ff' }}>
-                  เพจที่รับผิดชอบ: <strong style={{ color:'#4338ca' }}>
-                    {pages.filter(p=>p.assignedTo?.includes(myUid)).length > 0
-                      ? pages.filter(p=>p.assignedTo?.includes(myUid)).map(p=>p.name).join(', ')
-                      : 'ทุกเพจ (superadmin/head)'}
-                  </strong>
-                </div>
-
-                <button onClick={()=>handleCompare(compareDate)}
-                  style={{ background:'linear-gradient(135deg,#6366f1,#7c3aed)', border:'none', borderRadius:10, padding:'10px 0', cursor:'pointer', fontSize:13.5, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:7, boxShadow:'0 4px 12px rgba(99,102,241,.25)' }}>
-                  🔍 เปรียบเทียบเลย
+                ))}
+                <button type="button"
+                  onClick={()=>setBackendForm(p=>({...p,promos:[...(p.promos||[]),{name:'',qty:0}]}))}
+                  style={{ background:'#fff9e6', border:'1.5px dashed #fde68a', borderRadius:9, padding:'7px', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                  + เพิ่มโปรโมชั่น
                 </button>
-                {compareResult && (
-                  <button onClick={()=>setCompareResult(null)}
-                    style={{ background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>
-                    ✕ ล้างผล
-                  </button>
+                {(backendForm?.promos||[]).filter(p=>p.qty>0).length > 0 && (
+                  <div style={{ textAlign:'right', fontSize:13, fontWeight:800, color:'#b45309' }}>
+                    โปรรวม: {(backendForm?.promos||[]).reduce((a,p)=>a+(p.qty||0),0)} บ้าน
+                  </div>
                 )}
               </div>
+            </div>
+
+            {/* หมายเหตุ */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📝 หมายเหตุ</label>
+              <input value={backendForm?.note||''} onChange={e=>setBackendForm(p=>({...p,note:e.target.value}))} placeholder="หมายเหตุ (ถ้ามี)"
+                style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #fde68a', background:'#fff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit', boxSizing:'border-box' }}/>
+            </div>
+
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button onClick={()=>setBackendForm({pageId:'',totalOrders:0,saleAmount:0,promos:[],note:''})}
+                style={{ background:'#f1f5f9', border:'1.5px solid #e0e7ff', borderRadius:9, padding:'9px 18px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#6b7280', fontFamily:'inherit' }}>รีเซ็ต</button>
+              <button onClick={handleSaveBackendOrder} disabled={saving||!backendForm?.pageId}
+                style={{ background:backendForm?.pageId?'linear-gradient(135deg,#d97706,#f59e0b)':'#e5e7eb', border:'none', borderRadius:9, padding:'9px 24px', cursor:backendForm?.pageId?'pointer':'not-allowed', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit', boxShadow:backendForm?.pageId?'0 3px 10px rgba(217,119,6,.3)':'none' }}>
+                🖥️ บันทึกออเดอร์หลังบ้าน
+              </button>
             </div>
           </div>
 
-          {/* ── Compare Result ── */}
-          {compareResult && (
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-                <div style={{ fontSize:16, fontWeight:900, color:'#1e1b4b' }}>
-                  📊 ผลเปรียบเทียบ — {compareMode==='month'?compareMonth:compareMode==='week'?`สัปดาห์ที่มี ${compareDate}`:compareDate}
-                </div>
-                {/* Summary badges */}
-                {[
-                  { v:compareResult.filter(r=>r.status==='match').length,      l:'✅ ตรงกัน',  c:'#059669', b:'#bbf7d0', bg:'#f0fdf4' },
-                  { v:compareResult.filter(r=>r.status==='over').length,       l:'⚠️ ลงเกิน',   c:'#b45309', b:'#fde68a', bg:'#fffbeb' },
-                  { v:compareResult.filter(r=>r.status==='under').length,      l:'📉 Backend มากกว่า', c:'#0284c7', b:'#bfdbfe', bg:'#eff6ff' },
-                  { v:compareResult.filter(r=>r.status==='no_backend').length, l:'❓ ไม่มีหลังบ้าน', c:'#6b7280', b:'#e5e7eb', bg:'#f9fafb' },
-                ].filter(k=>k.v>0).map((k,i)=>(
-                  <span key={i} style={{ background:k.bg, color:k.c, border:`1.5px solid ${k.b}`, borderRadius:99, padding:'4px 12px', fontSize:12.5, fontWeight:800 }}>
-                    {k.l}: {k.v}
-                  </span>
-                ))}
-              </div>
-
-              {/* Compare cards per page */}
-              {compareResult.map((r,ri)=>{
-                const bgMap = { match:'#f0fdf4', over:'#fffbeb', under:'#eff6ff', no_backend:'#f9fafb' }
-                const bdMap = { match:'#86efac', over:'#fde68a', under:'#bfdbfe', no_backend:'#e5e7eb' }
-                const clMap = { match:'#059669', over:'#b45309', under:'#0284c7', no_backend:'#6b7280' }
-                const iconMap = { match:'✅', over:'⚠️', under:'📉', no_backend:'❓' }
-                const labelMap = { match:'ตรงกัน', over:'แอดมินลงเกิน Backend', under:'Backend มากกว่าที่ลง', no_backend:'ไม่มีข้อมูลหลังบ้าน' }
-                return (
-                  <div key={ri} style={{ background:'#fff', border:`2px solid ${bdMap[r.status]}`, borderLeft:`5px solid ${clMap[r.status]}`, borderRadius:16, overflow:'hidden' }}>
-                    {/* Page header */}
-                    <div style={{ background:bgMap[r.status], padding:'12px 18px', borderBottom:`1px solid ${bdMap[r.status]}`, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:15, fontWeight:900, color:'#1e1b4b', display:'flex', alignItems:'center', gap:8 }}>
-                          
-                          <span style={{ background:bgMap[r.status], color:clMap[r.status], border:`1.5px solid ${bdMap[r.status]}`, borderRadius:99, padding:'2px 10px', fontSize:12, fontWeight:700 }}>
-                            {iconMap[r.status]} {labelMap[r.status]}
-                          </span>
-                        </div>
-                        {r.adminNames.length > 0 && (
-                          <div style={{ fontSize:12, color:'#6b7280', marginTop:3 }}>
-                            แอดมิน: {r.adminNames.join(', ')}
-                          </div>
-                        )}
-                      </div>
-                      {/* KPI row */}
-                      <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ลงไว้</div>
-                          <div style={{ fontSize:20, fontWeight:900, color:'#1e1b4b' }}>{r.declared}</div>
-                        </div>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>Backend จริง</div>
-                          <div style={{ fontSize:20, fontWeight:900, color:r.status==='match'?'#059669':clMap[r.status] }}>{r.actual||'—'}</div>
-                        </div>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ผลต่าง</div>
-                          <div style={{ fontSize:20, fontWeight:900, color:r.diff===0?'#059669':r.diff<0?'#be123c':'#0284c7' }}>
-                            {r.diff===0?'±0':r.diff>0?`+${r.diff}`:r.diff}
-                          </div>
-                        </div>
-                        <div style={{ textAlign:'center' }}>
-                          <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ค่าคอมที่ลง</div>
-                          <div style={{ fontSize:18, fontWeight:900, color:'#7c3aed' }}>฿{Math.round(r.totalComm).toLocaleString()}</div>
-                        </div>
-                        {r.status !== 'match' && r.status !== 'no_backend' && (
-                          <div style={{ textAlign:'center' }}>
-                            <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>ค่าคอมที่ควรได้</div>
-                            <div style={{ fontSize:18, fontWeight:900, color:'#059669' }}>฿{r.adjComm.toLocaleString()}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Per-admin breakdown */}
-                    {r.comms.length > 0 && (
-                      <div style={{ overflowX:'auto' }}>
-                        <table style={{ width:'100%', borderCollapse:'collapse', minWidth:600 }}>
-                          <thead>
-                            <tr style={{ background:'#f8faff', borderBottom:`1.5px solid ${bdMap[r.status]}` }}>
-                              {['แอดมิน','กะ','🖐 มือ','🤖 AI','ออเดอร์รวม','ค่าคอม','ปรับหลังหัก'].map((h,i)=>(
-                                <th key={i} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:clMap[r.status], whiteSpace:'nowrap' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {r.comms.map((c,ci)=>{
-                              const orders = (parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0)
-                              const comm = c.total||(c.manualTotal||0)+(c.aiTotal||0)||((parseInt(c.manualOrders)||0)*(c.manualRate||commRates.manualRate||5)+(parseInt(c.aiOrders)||0)*(c.aiRate||commRates.aiRate||2))
-                              const ratio = r.declared>0 ? orders/r.declared : 0
-                              const adjOrders = r.actual>0 ? Math.round(Math.min(r.declared,r.actual)*ratio*10)/10 : orders
-                              const adjComm2 = r.actual>0 ? Math.round(adjOrders*(r.declared>0?comm/orders:0)*10)/10 : comm
-                              return (
-                                <tr key={ci} style={{ borderBottom:`1px solid ${bgMap[r.status]}` }}>
-                                  <td style={{ padding:'9px 12px' }}>
-                                    <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                                      <div style={{ width:26, height:26, borderRadius:'50%', background:`linear-gradient(135deg,${clMap[r.status]},#7c3aed)`, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800 }}>
-                                        {getUserName(c.adminId).slice(0,2)}
-                                      </div>
-                                      <span style={{ fontSize:13, fontWeight:700 }}>{getUserName(c.adminId)}</span>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding:'9px 12px' }}>
-                                    <span style={{ background:c.shift==='night'?'#eef2ff':'#fffbeb', color:c.shift==='night'?'#4338ca':'#b45309', border:`1px solid ${c.shift==='night'?'#c7d2fe':'#fde68a'}`, borderRadius:99, padding:'2px 7px', fontSize:11, fontWeight:700 }}>
-                                      {c.shift==='night'?'🌙 กลางคืน':'☀️ กลางวัน'}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#7c3aed' }}>{c.manualOrders||0}</td>
-                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#0f766e' }}>{c.aiOrders||0}</td>
-                                  <td style={{ padding:'9px 12px', fontWeight:800 }}>{orders}</td>
-                                  <td style={{ padding:'9px 12px', fontWeight:900, color:'#7c3aed' }}>฿{Math.round(comm).toLocaleString()}</td>
-                                  <td style={{ padding:'9px 12px' }}>
-                                    {r.status==='match' ? (
-                                      <span style={{ color:'#059669', fontWeight:700 }}>✅ ฿{Math.round(comm).toLocaleString()}</span>
-                                    ) : r.status==='no_backend' ? (
-                                      <span style={{ color:'#9ca3af' }}>—</span>
-                                    ) : (
-                                      <span style={{ color:'#059669', fontWeight:800 }}>฿{adjComm2.toLocaleString()}</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                          {r.comms.length > 1 && (
-                            <tfoot>
-                              <tr style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', borderTop:'2px solid #ddd6fe' }}>
-                                <td colSpan={4} style={{ padding:'9px 12px', fontSize:13, fontWeight:900, color:'#6d28d9' }}>รวม</td>
-                                <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>{r.declared}</td>
-                                <td style={{ padding:'9px 12px', fontSize:15, fontWeight:900, color:'#7c3aed' }}>฿{Math.round(r.totalComm).toLocaleString()}</td>
-                                <td style={{ padding:'9px 12px', fontSize:15, fontWeight:900, color:'#059669' }}>฿{r.adjComm.toLocaleString()}</td>
-                              </tr>
-                            </tfoot>
-                          )}
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* ── Backend list + grouped summary ── */}
+          {/* ══ รายการออเดอร์หลังบ้าน ══ */}
           <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, overflow:'hidden' }}>
-            <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', fontSize:14, fontWeight:800, color:'#b45309' }}>
-              🖥️ ออเดอร์จริงจากหลังบ้าน ({backendOrders.length} รายการ)
+            <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ fontSize:14, fontWeight:800, color:'#b45309' }}>
+                🖥️ ออเดอร์จริงจากหลังบ้าน ({backendOrders.filter(b=>!filters.month||b.date?.startsWith(filters.month)).length} รายการ)
+              </div>
+              {filters.month && <span style={{ fontSize:12, color:'#92400e', fontWeight:700 }}>เดือน {filters.month}</span>}
             </div>
-            {/* ── สรุปรวมตามเพจ+วันที่ (หลายคนต่อเพจ) ── */}
-            {(() => {
-              // ── Primary source: commissions (ไม่ต้องมีไฟล์ backend) ──
-              const commGrouped = {}
-              commissions.forEach(c => {
-                if (!c.date || !c.pageId) return
-                const key = `${c.date}__${c.pageId}`
-                if (!commGrouped[key]) commGrouped[key] = { date:c.date, pageId:c.pageId, actualTotal:0, count:0 }
-                commGrouped[key].count += 1
-              })
-              // รวม backend ถ้ามี
-              const grouped = { ...commGrouped }
-              backendOrders.forEach(b => {
-                const key = `${b.date}__${b.pageId}`
-                if (!grouped[key]) grouped[key] = { date:b.date, pageId:b.pageId, actualTotal:0, count:0 }
-                grouped[key].actualTotal += (b.actualCount||0)
-              })
-
-              const enriched = Object.values(grouped).map(g => {
-                const dayComms = commissions.filter(c => c.date===g.date && c.pageId===g.pageId)
-                const adminTotalOrders = dayComms.reduce((a,c)=>a+(parseInt(c.manualOrders)||0)+(parseInt(c.aiOrders)||0),0)
-                const adminsDetail = dayComms.map(c => {
-                  const manual  = parseInt(c.manualOrders)||0
-                  const ai      = parseInt(c.aiOrders)||0
-                  const orders  = manual + ai
-                  const ratio   = adminTotalOrders>0 ? orders/adminTotalOrders : 0
-                  const missing = Math.max(0, adminTotalOrders - g.actualTotal)
-                  const deduct  = Math.round(missing * ratio * 10)/10
-                  const adjOrders = Math.max(0, Math.round((orders - deduct)*10)/10)
-                  const mRate   = c.manualRate||commRates.manualRate||5
-                  const aRate   = c.aiRate||commRates.aiRate||2
-                  const comm    = Math.round((manual*mRate + ai*aRate)*10)/10
-                  const adjComm = orders>0 ? Math.round(adjOrders*(comm/orders)*10)/10 : 0
-                  return { ...c, orders, ratio, adjOrders, comm, adjComm, deduct }
-                })
-                const totalComm = adminsDetail.reduce((a,d)=>a+d.comm,0)
-                const avgComm   = adminsDetail.length>0 ? Math.round(totalComm/adminsDetail.length) : 0
-                return { ...g, adminsDetail, adminTotalOrders, totalComm, avgComm }
-              })
-
-              // กรองตามวันที่ถ้าระบุ
-              const filteredEnriched = analysisDate
-                ? enriched.filter(g => g.date === analysisDate)
-                : enriched.sort((a,b) => b.date?.localeCompare(a.date||''))
-
-              if (!filteredEnriched.length) return (
-                <div style={{ padding:'24px', textAlign:'center', color:'#9ca3af' }}>
-                  <div style={{ fontSize:20, marginBottom:8 }}>📭</div>
-                  <div style={{ fontWeight:700 }}>ยังไม่มีข้อมูล</div>
-                  <div style={{ fontSize:12.5, marginTop:4 }}>ลงข้อมูลค่าคอมก่อน หรือเลือกวันที่อื่น</div>
-                </div>
-              )
-              // use filteredEnriched instead of enriched below
-              return (
-                <div style={{ padding:'16px', borderBottom:'1.5px solid #fde68a', background:'linear-gradient(135deg,#fffbeb55,#fff)', display:'flex', flexDirection:'column', gap:14 }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
-                    <div style={{ fontSize:14, fontWeight:900, color:'#b45309', display:'flex', alignItems:'center', gap:8 }}>
-                      📊 สรุปค่าคอมตามเพจ
-                      <span style={{ background:'#fde68a', color:'#92400e', borderRadius:99, padding:'2px 9px', fontSize:12, fontWeight:800 }}>
-                        {(filteredEnriched||enriched).length} เพจ
-                      </span>
-                      {backendOrders.length===0 && (
-                        <span style={{ background:'#eef2ff', color:'#4338ca', border:'1px solid #c7d2fe', borderRadius:99, padding:'2px 9px', fontSize:11, fontWeight:700 }}>
-                          📊 จากระบบ (ยังไม่มี Backend)
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ fontSize:12, color:'#6b7280' }}>กรองวันที่:</span>
-                      <select value={analysisDate} onChange={e=>setFilters(p=>({...p,date:e.target.value}))}
-                        style={{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #fde68a', background:'#fff', fontSize:12.5, color:'#92400e', fontFamily:'inherit' }}>
-                        {[...new Set(commissions.map(c=>c.date))].sort().reverse().slice(0,30).map(d=>(
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                        <option value="">ทุกวัน</option>
-                      </select>
-                    </div>
-                  </div>
-                  {(filteredEnriched||enriched).map((g,gi)=>(
-                    <div key={gi} style={{ background:'#fff', border:'2px solid #fde68a', borderRadius:14, overflow:'hidden' }}>
-                      {/* Page header */}
-                      <div style={{ background:'linear-gradient(135deg,#fef3c7,#fffbeb)', padding:'12px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:15, fontWeight:900, color:'#92400e' }}><PageBadge page={getPage(g.pageId)} size='md'/></div>
-                          <div style={{ fontSize:12, color:'#b45309', marginTop:2 }}>{g.date} · {g.count} คนร่วม</div>
-                        </div>
-                        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-                          {[
-                            { l:'ออเดอร์ที่ลง',   v:g.adminTotalOrders, c:'#1e1b4b' },
-                            { l:'ออเดอร์จริง',    v:g.actualTotal,      c:g.actualTotal<g.adminTotalOrders?'#be123c':g.actualTotal>g.adminTotalOrders?'#0284c7':'#059669' },
-                            { l:'ออเดอร์หาย',     v:Math.max(0,g.adminTotalOrders-g.actualTotal)||'—', c:'#be123c', hide:g.actualTotal>=g.adminTotalOrders },
-                            { l:'ค่าคอมรวม',      v:`฿${Math.round(g.totalComm).toLocaleString()}`, c:'#7c3aed' },
-                            { l:'ค่าคอมเฉลี่ย',   v:`฿${g.avgComm.toLocaleString()}/คน`,            c:'#0f766e' },
-                          ].filter(k=>!k.hide).map((k,ki)=>(
-                            <div key={ki} style={{ textAlign:'center', minWidth:60 }}>
-                              <div style={{ fontSize:10.5, color:'#6b7280', fontWeight:700, marginBottom:2 }}>{k.l}</div>
-                              <div style={{ fontSize:17, fontWeight:900, color:k.c }}>{k.v}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Per-admin table */}
-                      {g.adminsDetail.length>0 && (
-                        <div style={{ overflowX:'auto' }}>
-                          <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
-                            <thead>
-                              <tr style={{ background:'#fef9ec', borderBottom:'1.5px solid #fde68a' }}>
-                                {['แอดมิน','กะ','🖐 มือ','🤖 AI','ออเดอร์รวม','สัดส่วน','ออเดอร์หัก','ออเดอร์สุทธิ','ค่าคอม'].map((h,i)=>(
-                                  <th key={i} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', whiteSpace:'nowrap' }}>{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {g.adminsDetail.map((d,di)=>(
-                                <tr key={di} style={{ borderBottom:'1px solid #fef3c7', background:di%2===0?'#fffdf5':'#fff' }}>
-                                  <td style={{ padding:'9px 12px' }}>
-                                    <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                                      <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#d97706,#f59e0b)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800 }}>
-                                        {getUserName(d.adminId).slice(0,2)}
-                                      </div>
-                                      <span style={{ fontSize:13, fontWeight:700 }}>{getUserName(d.adminId)}</span>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding:'9px 12px' }}>
-                                    <span style={{ background:d.shift==='night'?'#eef2ff':'#fffbeb', color:d.shift==='night'?'#4338ca':'#b45309', border:`1px solid ${d.shift==='night'?'#c7d2fe':'#fde68a'}`, borderRadius:99, padding:'2px 8px', fontSize:11, fontWeight:700 }}>
-                                      {d.shift==='night'?'🌙 กลางคืน':'☀️ กลางวัน'}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#7c3aed' }}>{d.manualOrders||0}</td>
-                                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#0f766e' }}>{d.aiOrders||0}</td>
-                                  <td style={{ padding:'9px 12px', fontWeight:800, color:'#1e1b4b' }}>{d.orders}</td>
-                                  <td style={{ padding:'9px 12px' }}>
-                                    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                                      <div style={{ width:50, height:7, borderRadius:99, background:'#fde68a', overflow:'hidden' }}>
-                                        <div style={{ height:'100%', width:`${Math.round(d.ratio*100)}%`, background:'#d97706', borderRadius:99 }}/>
-                                      </div>
-                                      <span style={{ fontSize:12, fontWeight:700, color:'#92400e' }}>{Math.round(d.ratio*100)}%</span>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding:'9px 12px', color:d.deduct>0?'#be123c':'#9ca3af', fontWeight:d.deduct>0?800:400 }}>
-                                    {d.deduct>0?`-${d.deduct}`:'—'}
-                                  </td>
-                                  <td style={{ padding:'9px 12px', fontWeight:800, color:'#1e1b4b' }}>{d.adjOrders}</td>
-                                  <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#7c3aed' }}>฿{d.adjComm.toLocaleString()}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', borderTop:'2px solid #ddd6fe' }}>
-                                <td colSpan={4} style={{ padding:'9px 12px', fontSize:13, fontWeight:900, color:'#6d28d9' }}>∑ รวมทั้งเพจ</td>
-                                <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>
-                                  {g.adminsDetail.reduce((a,d)=>a+d.orders,0)}
-                                </td>
-                                <td style={{ padding:'9px 12px' }}/>
-                                <td style={{ padding:'9px 12px', fontSize:13, fontWeight:700, color:'#be123c' }}>
-                                  {g.adminsDetail.reduce((a,d)=>a+d.deduct,0)>0
-                                    ? `-${Math.round(g.adminsDetail.reduce((a,d)=>a+d.deduct,0)*10)/10}` : '—'}
-                                </td>
-                                <td style={{ padding:'9px 12px', fontSize:14, fontWeight:900, color:'#1e1b4b' }}>
-                                  {Math.round(g.adminsDetail.reduce((a,d)=>a+d.adjOrders,0)*10)/10}
-                                </td>
-                                <td style={{ padding:'9px 12px' }}>
-                                  <div style={{ fontSize:16, fontWeight:900, color:'#7c3aed' }}>
-                                    ฿{Math.round(g.totalComm).toLocaleString()}
-                                  </div>
-                                  <div style={{ fontSize:11, color:'#9ca3af', fontWeight:600 }}>
-                                    เฉลี่ย ฿{g.avgComm.toLocaleString()}/คน
-                                  </div>
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
-            <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:500 }}>
-                <thead><tr style={{ borderBottom:'1.5px solid #fde68a' }}>
-                  {['วันที่','เพจ','ออเดอร์จริง','นำเข้าเมื่อ'].map((h,i)=>(
-                    <th key={i} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</th>
-                  ))}
-                </tr></thead>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:600 }}>
+                <thead>
+                  <tr style={{ background:'#fef9ec', borderBottom:'1.5px solid #fde68a' }}>
+                    {['วันที่','เพจ','ออเดอร์รวม','โปรโมชั่น','ยอดขาย','หมายเหตุ',''].map((h,i)=>(
+                      <th key={i} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:800, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
-                  {backendOrders.length===0
-                    ?<tr><td colSpan={4} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>ยังไม่มีข้อมูลหลังบ้าน — Import ไฟล์ก่อน</td></tr>
-                    :backendOrders.slice(0,50).map((b,i)=>(
-                      <tr key={i} style={{ borderBottom:'1px solid #fef3c7' }}>
-                        <td style={{ padding:'10px 14px', fontSize:13, color:'#6b7280' }}>{b.date}</td>
-                        <td style={{ padding:'10px 14px', fontSize:13.5, fontWeight:600 }}>{getPageName(b.pageId)||b.pageId}</td>
-                        <td style={{ padding:'10px 14px', fontSize:16, fontWeight:900, color:'#b45309' }}>{b.actualCount}</td>
-                        <td style={{ padding:'10px 14px', fontSize:12, color:'#9ca3af' }}>
-                          {b.importedAt?.toDate ? format(b.importedAt.toDate(),'d/M/yy HH:mm') : '—'}
+                  {backendOrders.filter(b=>!filters.month||b.date?.startsWith(filters.month)).length===0
+                    ? <tr><td colSpan={7} style={{ textAlign:'center', padding:28, color:'#9ca3af' }}>
+                        <div style={{ fontSize:20, marginBottom:8 }}>📭</div>
+                        ยังไม่มีออเดอร์หลังบ้าน — กรอกฟอร์มด้านบน
+                      </td></tr>
+                    : backendOrders.filter(b=>!filters.month||b.date?.startsWith(filters.month))
+                        .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+                        .map((b,i)=>(
+                      <tr key={b.id||i} style={{ borderBottom:'1px solid #fef3c7' }}>
+                        <td style={{ padding:'10px 12px', fontSize:13, color:'#6b7280', whiteSpace:'nowrap' }}>{b.date}</td>
+                        <td style={{ padding:'10px 12px' }}><PageBadge page={getPage(b.pageId)} size='sm'/></td>
+                        <td style={{ padding:'10px 12px', fontSize:16, fontWeight:900, color:'#b45309' }}>{b.actualCount||b.totalOrders||0}</td>
+                        <td style={{ padding:'10px 12px', fontSize:12, color:'#4b5563' }}>
+                          {(b.promos||[]).filter(p=>p.qty>0).map((p,pi)=>(
+                            <span key={pi} style={{ background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a', borderRadius:99, padding:'1px 8px', fontSize:11.5, fontWeight:700, marginRight:4, display:'inline-block' }}>
+                              {p.name}: {p.qty}
+                            </span>
+                          ))}
+                          {!(b.promos||[]).filter(p=>p.qty>0).length && '—'}
+                        </td>
+                        <td style={{ padding:'10px 12px', fontSize:13, fontWeight:700, color:'#0f766e' }}>
+                          {isSuperAdmin && b.saleAmount>0 ? `฿${parseFloat(b.saleAmount).toLocaleString()}` : '—'}
+                        </td>
+                        <td style={{ padding:'10px 12px', fontSize:12.5, color:'#6b7280' }}>{b.note||'—'}</td>
+                        <td style={{ padding:'10px 12px' }}>
+                          {(isSuperAdmin||canManage) && (
+                            <button onClick={()=>removeBackendOrder&&removeBackendOrder(b.id)}
+                              style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:7, width:28, height:28, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#be123c' }}>
+                              <Trash2 size={12}/>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1923,6 +1747,7 @@ export default function Commission() {
           </div>
         </div>
       )}
+
 
       {tab==='cancelled' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
