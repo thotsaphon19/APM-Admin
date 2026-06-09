@@ -15,6 +15,9 @@ const nowTotal   = nowHour * 60 + nowMin  // นาทีตั้งแต่ 0
 // กะกลางวัน 05:00–20:00 (300–1200), กะดึก 20:00–05:00
 const defaultShift = (nowTotal >= 300 && nowTotal < 1200) ? 'day' : 'night'
 
+// บล็อคเช็คอินหลัง 09:00 (540 นาที)
+const CHECKIN_CUTOFF = 9 * 60  // 09:00
+
 // ── กะ ──────────────────────────────────────────────
 const SHIFTS = {
   day:   { label:'☀️ กะกลางวัน',  short:'กลางวัน',  range:'05:00–20:00', color:'#d97706', bg:'#fffbeb', border:'#fde68a', dark:'#92400e' },
@@ -51,6 +54,15 @@ function fmtMonthTH(ym) {
 export default function CheckIn() {
   const { profile, user, isSuperAdmin, canManage, canAudit } = useAuth()
   const canSeeAll2 = isSuperAdmin || canManage || canAudit || profile?.role === 'assistant'
+
+  // ── บล็อคเช็คอินหลัง 09:00 ─────────────────────────
+  // คำนวณ real-time (ใช้ selectedCheckinDate เพื่อรองรับย้อนหลัง)
+  const isLateNow = useMemo(() => {
+    // ถ้าเลือกวันย้อนหลัง ไม่บล็อค
+    if (selectedCheckinDate && selectedCheckinDate !== todayStr) return false
+    const now = new Date()
+    return (now.getHours() * 60 + now.getMinutes()) >= CHECKIN_CUTOFF
+  }, [selectedCheckinDate])
   const { pages, checkins, users, doCheckin, doCheckout, getUserName } = useData()
   const { notifyCustom } = useNotify()
 
@@ -62,6 +74,7 @@ export default function CheckIn() {
     : pages.filter(p => p.status === 'active')
 
   const [tab,          setTab]          = useState('checkin')
+  const [selectedCheckinDate, setSelectedCheckinDate] = useState(todayStr)
   const [selectedShift,setSelectedShift]= useState(defaultShift)
   const [selectedPages,setSelectedPages]= useState([])   // multi-page
   const [saving,       setSaving]       = useState(false)
@@ -93,7 +106,7 @@ export default function CheckIn() {
     setSaving(true)
     try {
       await Promise.all(selectedPages.map(pageId =>
-        doCheckin({ userId: myUid, pageId, shift: selectedShift, date: todayStr })
+        doCheckin({ userId: myUid, pageId, shift: selectedShift, date: selectedCheckinDate || todayStr })
       ))
       const names = selectedPages.map(id => pages.find(p => p.id === id)?.name || id).join(', ')
       notifyCustom({
@@ -251,6 +264,24 @@ export default function CheckIn() {
               <LogIn size={17} style={{ color:'#6366f1' }}/> เช็คอินเพจ
             </div>
 
+            {/* Date picker - ย้อนหลังได้ */}
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+                📅 วันที่ <span style={{ color:'#059669', fontSize:10, fontWeight:600, textTransform:'none', letterSpacing:'normal' }}>ย้อนหลังได้</span>
+              </label>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                <input type="date" value={selectedCheckinDate} onChange={e=>setSelectedCheckinDate(e.target.value)}
+                  style={{ padding:'8px 12px', borderRadius:9, border:`1.5px solid ${selectedCheckinDate!==todayStr?'#f59e0b':'#c7d2fe'}`, background:'#fafbff', fontSize:13.5, color:'#1e1b4b', fontFamily:'inherit' }}/>
+                {selectedCheckinDate!==todayStr && (
+                  <>
+                    <span style={{ background:'#fffbeb', color:'#b45309', border:'1px solid #fde68a', borderRadius:99, padding:'3px 10px', fontSize:11.5, fontWeight:700 }}>📅 บันทึกย้อนหลัง</span>
+                    <button onClick={()=>setSelectedCheckinDate(todayStr)}
+                      style={{ background:'#f1f5f9', border:'1px solid #e0e7ff', borderRadius:8, padding:'5px 12px', cursor:'pointer', fontSize:12, color:'#6b7280', fontFamily:'inherit' }}>↩ วันนี้</button>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Shift picker */}
             <div style={{ marginBottom:18 }}>
               <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
@@ -329,10 +360,21 @@ export default function CheckIn() {
               )}
             </div>
 
+            {/* ── บล็อคหลัง 09:00 ── */}
+            {isLateNow && (
+              <div style={{ background:'linear-gradient(135deg,#fff1f2,#ffe4e6)', border:'2px solid #fca5a5', borderRadius:14, padding:'16px 20px', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ fontSize:32, flexShrink:0 }}>🚫</div>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:900, color:'#be123c', marginBottom:4 }}>หมดเวลาเช็คอินแล้ว</div>
+                  <div style={{ fontSize:13, color:'#6b7280' }}>ระบบปิดรับเช็คอินหลัง 09:00 น. — หากต้องการบันทึกย้อนหลังให้เลือกวันที่อื่น</div>
+                </div>
+              </div>
+            )}
+
             <button onClick={handleCheckin}
-              disabled={!selectedPages.length || saving}
+              disabled={!selectedPages.length || saving || isLateNow}
               style={{
-                background: selectedPages.length ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : '#e5e7eb',
+                background: isLateNow ? '#e5e7eb' : selectedPages.length ? 'linear-gradient(135deg,#6366f1,#7c3aed)' : '#e5e7eb',
                 border:'none', borderRadius:12, padding:'12px 28px', cursor:selectedPages.length?'pointer':'not-allowed',
                 fontSize:15, fontWeight:900, color:selectedPages.length?'#fff':'#9ca3af',
                 fontFamily:'inherit', display:'flex', alignItems:'center', gap:8,
