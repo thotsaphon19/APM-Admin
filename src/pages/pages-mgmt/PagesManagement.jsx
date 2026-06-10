@@ -525,18 +525,28 @@ export default function PagesManagement() {
                   return (
                     <div key={p.id} style={{
                       background:'linear-gradient(135deg,#fafbff,#f5f3ff)',
-                      border:'1.5px solid #ddd6fe', borderRadius:14, padding:16,
+                      border:`1.5px solid ${p.status==='active'?'#ddd6fe':'#e5e7eb'}`, borderRadius:14, padding:16,
+                      opacity: p.status==='active' ? 1 : 0.65,
                     }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
                         <div style={{ fontSize:22 }}>🧪</div>
-                        <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-                    <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{p.name}</div>
-                    {p.channel && <ChannelBadge channel={p.channel} channelNote={p.channelNote} size='sm'/>}
-                  </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap', flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{p.name}</div>
+                          {p.channel && <ChannelBadge channel={p.channel} channelNote={p.channelNote} size='sm'/>}
+                        </div>
+                        {/* สถานะ + ปุ่มเปิด/ปิด */}
+                        {canManage && (
+                          <button onClick={async()=>{ await editPage(p.id,{...p,status:p.status==='active'?'inactive':'active'}) }}
+                            title={p.status==='active'?'ปิดเพจ':'เปิดเพจ'}
+                            style={{ background:p.status==='active'?'#f0fdf4':'#fff1f2', border:`1.5px solid ${p.status==='active'?'#bbf7d0':'#fecdd3'}`, borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:p.status==='active'?'#059669':'#be123c', flexShrink:0 }}>
+                            <Power size={12}/>
+                          </button>
+                        )}
                       </div>
+
                       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>เฝ้าคืนนี้โดย</div>
                       {guardAdmin.length > 0 ? (
-                        <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:10 }}>
                           {guardAdmin.map((name,i) => (
                             <span key={i} style={{ background:'#ede9fe', color:'#6d28d9', border:'1.5px solid #ddd6fe', borderRadius:99, padding:'3px 9px', fontSize:12, fontWeight:700 }}>
                               🌙 {name}
@@ -544,9 +554,33 @@ export default function PagesManagement() {
                           ))}
                         </div>
                       ) : (
-                        <span style={{ background:'#fff7ed', color:'#c2410c', border:'1.5px solid #fed7aa', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700 }}>
+                        <span style={{ background:'#fff7ed', color:'#c2410c', border:'1.5px solid #fed7aa', borderRadius:99, padding:'3px 10px', fontSize:12, fontWeight:700, display:'inline-block', marginBottom:10 }}>
                           ⚠️ ยังไม่มีคนเฝ้า
                         </span>
+                      )}
+
+                      {/* ปุ่มแจ้งเตือน แชทค้าง */}
+                      {(isSuperAdmin || profile?.role==='assistant') && (p.assignedTo||[]).length > 0 && (
+                        <button onClick={async()=>{
+                          const cnt = (alertCounts[p.id]||0) + 1
+                          setAlertCounts(prev=>({...prev,[p.id]:cnt}));
+                          (p.assignedTo||[]).forEach(uid=>{
+                            notifyCustom({
+                              type:'alert',
+                              title:`🔔 มีแชทค้าง! — ${p.name}`,
+                              message:`ตรวจสอบแชทค้างด่วน (แจ้งเตือนครั้งที่ ${cnt})`,
+                              link:'/commission',
+                              targetUid:uid,
+                            })
+                          })
+                        }}
+                        style={{ width:'100%', background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'1.5px solid #fde68a', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12, fontWeight:800, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                          <Bell size={12}/>
+                          แจ้ง "มีแชทค้าง"
+                          {alertCounts[p.id]>0 && (
+                            <span style={{ background:'#ef4444', color:'#fff', borderRadius:99, padding:'0 6px', fontSize:10, fontWeight:900 }}>×{alertCounts[p.id]}</span>
+                          )}
+                        </button>
                       )}
                     </div>
                   )
@@ -661,8 +695,8 @@ export default function PagesManagement() {
                         )}
                       </div>
 
-                      {/* ปุ่มแจ้งเตือน "มีแชทค้าง" — superadmin/assistant เท่านั้น */}
-                      {(isSuperAdmin || profile?.role==='assistant') && (p.assignedTo||[]).length > 0 && (
+                      {/* ปุ่มแจ้งเตือน "มีแชทค้าง" — เฉพาะเพจทดสอบ + superadmin/assistant */}
+                      {(isSuperAdmin || profile?.role==='assistant') && p.type==='test' && (p.assignedTo||[]).length > 0 && (
                         <button onClick={async () => {
                           const cnt = (alertCounts[p.id]||0) + 1
                           setAlertCounts(prev => ({...prev, [p.id]: cnt}))
