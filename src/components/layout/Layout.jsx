@@ -140,7 +140,7 @@ export default function Layout() {
           {NAV_GROUPS.map(group=>{
             const visible=group.items.filter(n=>n.roles.includes(profile?.role))
             if(!visible.length) return null
-            const layout = (
+            return (
               <div key={group.label}>
                 <div className="nav-section-label">{group.label}</div>
                 {visible.map(item=>(
