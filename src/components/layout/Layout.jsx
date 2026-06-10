@@ -73,6 +73,31 @@ export default function Layout() {
   const toggleCollapse=()=>{ const n=!collapsed; setCollapsed(n); localStorage.setItem('sidebar-collapsed',String(n)) }
   const handleLogout=async()=>{ await logout(); navigate('/login') }
 
+  // ── Profile photo states ──────────────────────────
+  const { updateUser } = useData()
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [uploadingPhoto,   setUploadingPhoto]   = useState(false)
+  const [photoErr,         setPhotoErr]         = useState('')
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) {
+      setPhotoErr('รองรับเฉพาะ JPG, PNG, WebP'); return
+    }
+    if (file.size > 2 * 1024 * 1024) { setPhotoErr('ไฟล์ต้องไม่เกิน 2MB'); return }
+    setUploadingPhoto(true); setPhotoErr('')
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      try {
+        await updateUser(profile?.id, { photoURL: ev.target.result })
+        setShowProfileModal(false)
+      } catch(err) { setPhotoErr(err.message) }
+      finally { setUploadingPhoto(false) }
+    }
+    reader.readAsDataURL(file)
+  }
+
   const isCollapsed=!isMobile&&collapsed
   const sidebarClass=['sidebar', isCollapsed?'collapsed':'', isMobile?(mobileOpen?'mobile-open':'mobile-hidden'):''].filter(Boolean).join(' ')
   const mainClass=['main-wrap', isCollapsed?'collapsed':''].filter(Boolean).join(' ')
