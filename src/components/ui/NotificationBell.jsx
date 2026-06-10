@@ -5,12 +5,43 @@ import { formatDistanceToNow } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { Bell, Check, Trash2, X, BellOff } from 'lucide-react'
 
+// ── เสียงแจ้งเตือน (Web Audio API — ไม่ต้องใช้ไฟล์ mp3) ──
+function playNotifySound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    // เสียง 2 โน้ต สั้นๆ นุ่ม
+    const notes = [880, 1100]
+    notes.forEach((freq, i) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.15)
+      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + i * 0.15 + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.25)
+      osc.start(ctx.currentTime + i * 0.15)
+      osc.stop(ctx.currentTime + i * 0.15 + 0.3)
+    })
+  } catch(e) { /* ไม่รองรับ browser เก่า */ }
+}
+
 export default function NotificationBell() {
   const { notifications, unreadCount, markRead, markAllAsRead, deleteNoti, uid } = useNotifications()
   const [open, setOpen] = useState(false)
   const [tab,  setTab]  = useState('unread') // 'unread' | 'all'
   const ref   = useRef(null)
   const nav   = useNavigate()
+  const prevCount = useRef(unreadCount)
+
+  // ── เสียงเมื่อ unreadCount เพิ่มขึ้น ──────────────
+  useEffect(() => {
+    if (unreadCount > prevCount.current) {
+      playNotifySound()
+    }
+    prevCount.current = unreadCount
+  }, [unreadCount])
 
   // close on outside click
   useEffect(() => {
