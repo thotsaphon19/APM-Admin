@@ -12,16 +12,16 @@ const nowHour    = new Date().getHours()
 const nowMin     = new Date().getMinutes()
 const nowTotal   = nowHour * 60 + nowMin  // นาทีตั้งแต่ 00:00
 
-// กะกลางวัน 05:00–20:00 (300–1200), กะดึก 20:00–05:00
-const defaultShift = (nowTotal >= 300 && nowTotal < 1200) ? 'day' : 'night'
+// กะกลางวัน 05:00–22:30 (300–1350), กะดึก 22:30–05:00
+const defaultShift = (nowTotal >= 300 && nowTotal < 1350) ? 'day' : 'night'
 
 // บล็อคเช็คอินหลัง 09:00 (540 นาที)
 const CHECKIN_CUTOFF = 9 * 60  // 09:00
 
 // ── กะ ──────────────────────────────────────────────
 const SHIFTS = {
-  day:   { label:'☀️ กะกลางวัน',  short:'กลางวัน',  range:'05:00–20:00', color:'#d97706', bg:'#fffbeb', border:'#fde68a', dark:'#92400e' },
-  night: { label:'🌙 กะดึก',      short:'กะดึก',    range:'20:00–05:00', color:'#4338ca', bg:'#eef2ff', border:'#c7d2fe', dark:'#312e81' },
+  day:   { label:'☀️ กะกลางวัน',  short:'กลางวัน',  range:'05:00–22:30', color:'#d97706', bg:'#fffbeb', border:'#fde68a', dark:'#92400e' },
+  night: { label:'🌙 กะดึก',      short:'กะดึก',    range:'22:30–05:00', color:'#4338ca', bg:'#eef2ff', border:'#c7d2fe', dark:'#312e81' },
 }
 
 // ── Helpers ─────────────────────────────────────────
