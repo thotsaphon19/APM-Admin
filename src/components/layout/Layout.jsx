@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
-import { ChevronLeft, ChevronRight, Menu, X, LogOut } from 'lucide-react'
+import { useData } from '../../contexts/DataContext'
+import { ChevronLeft, ChevronRight, Menu, X, LogOut, Camera, Upload } from 'lucide-react'
 import NotificationBell from '../ui/NotificationBell'
 
 const NAV_GROUPS = [
@@ -113,7 +114,7 @@ export default function Layout() {
           {NAV_GROUPS.map(group=>{
             const visible=group.items.filter(n=>n.roles.includes(profile?.role))
             if(!visible.length) return null
-            return (
+            const layout = (
               <div key={group.label}>
                 <div className="nav-section-label">{group.label}</div>
                 {visible.map(item=>(
@@ -132,8 +133,16 @@ export default function Layout() {
         {/* Footer */}
         <div className="sidebar-footer">
           <div className="user-pill">
-            <div className="avatar avatar-sm" style={{ background:'rgba(255,255,255,.25)', color:'#fff', border:'1.5px solid rgba(255,255,255,.3)', fontSize:14 }}>
-              {(profile?.avatar||profile?.name||'?').slice(0,2)}
+            <div className="avatar avatar-sm" onClick={()=>setShowProfileModal(true)}
+              style={{ background:profile?.photoURL?'transparent':'rgba(255,255,255,.25)', color:'#fff', border:'2px solid rgba(255,255,255,.4)', fontSize:14, cursor:'pointer', overflow:'hidden', flexShrink:0, position:'relative' }}>
+              {profile?.photoURL
+                ? <img src={profile.photoURL} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }}/>
+                : (profile?.avatar||profile?.name||'?').slice(0,2)
+              }
+              <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.3)', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'opacity .2s', borderRadius:'50%' }}
+                onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+                <Camera size={10} color="#fff"/>
+              </div>
             </div>
             <div className="user-pill-info">
               <div className="user-name">{profile?.name}</div>
@@ -175,5 +184,63 @@ export default function Layout() {
         </main>
       </div>
     </div>
+  )
+
+  // ── Profile Modal ──────────────────────────────────
+  const modal = showProfileModal && (
+    <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:20 }}
+      onClick={e=>e.target===e.currentTarget&&setShowProfileModal(false)}>
+      <div style={{ background:'#fff', borderRadius:22, padding:28, width:'100%', maxWidth:360, boxShadow:'0 20px 50px rgba(0,0,0,.25)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:22 }}>
+          <div style={{ fontSize:17, fontWeight:900, color:'#1e1b4b' }}>📷 รูปโปรไฟล์</div>
+          <button onClick={()=>setShowProfileModal(false)}
+            style={{ background:'#f1f5f9', border:'none', borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#6b7280' }}>✕</button>
+        </div>
+
+        {/* Current avatar */}
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14, marginBottom:22 }}>
+          <div style={{ width:90, height:90, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#7c3aed)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, fontWeight:900, overflow:'hidden', border:'3px solid #e0e7ff' }}>
+            {profile?.photoURL
+              ? <img src={profile.photoURL} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+              : (profile?.avatar||profile?.name||'?').slice(0,2)
+            }
+          </div>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:15, fontWeight:800, color:'#1e1b4b' }}>{profile?.name}</div>
+            <div style={{ fontSize:12.5, color:'#6b7280', marginTop:2 }}>{ROLE_STYLE[profile?.role]?.label}</div>
+          </div>
+        </div>
+
+        {photoErr && (
+          <div style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:10, padding:'9px 14px', fontSize:13, color:'#be123c', marginBottom:12 }}>❌ {photoErr}</div>
+        )}
+
+        {/* Upload */}
+        <label style={{ display:'block', cursor:'pointer' }}>
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoUpload} style={{ display:'none' }}/>
+          <div style={{ background:uploadingPhoto?'#e5e7eb':'linear-gradient(135deg,#6366f1,#7c3aed)', border:'none', borderRadius:12, padding:'13px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity:uploadingPhoto?.7:1, transition:'all .2s' }}>
+            <Upload size={16} color="#fff"/>
+            <span style={{ fontSize:14, fontWeight:800, color:'#fff' }}>
+              {uploadingPhoto ? '⏳ กำลังอัพโหลด...' : '📂 เลือกรูปภาพ'}
+            </span>
+          </div>
+          <div style={{ fontSize:11.5, color:'#9ca3af', textAlign:'center', marginTop:6 }}>JPG, PNG, WebP · ไม่เกิน 2MB</div>
+        </label>
+
+        {profile?.photoURL && (
+          <button onClick={async()=>{ await updateUser(profile?.id,{photoURL:''}); setShowProfileModal(false) }}
+            style={{ width:'100%', background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:10, padding:'9px 0', cursor:'pointer', fontSize:13, fontWeight:700, color:'#be123c', fontFamily:'inherit', marginTop:10 }}>
+            🗑️ ลบรูปโปรไฟล์
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      {layout}
+      {modal}
+    </>
   )
 }
