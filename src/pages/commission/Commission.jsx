@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx'
 import { computeDailyCommissions, splitNightShiftOrders, calcFullCommission, calcDailyQuotaCommission } from './commissionEngine'
 
 const today     = format(new Date(), 'yyyy-MM-dd')
+const ORDER_CUTOFF_MIN = 9 * 60  // 09:00 น.
 const thisMonth = format(new Date(), 'yyyy-MM')
 
 const S = { width:'100%', background:'#fff', border:'1.5px solid #dde3f5', borderRadius:10, color:'#1e1b4b', fontFamily:'inherit', fontSize:14, padding:'9px 12px', outline:'none' }
@@ -29,6 +30,11 @@ export default function Commission() {
 
   const myUid  = user?.uid || profile?.id || ''
   const myIds  = [user?.uid, profile?.id].filter(Boolean)
+
+  // ── บล็อคลงออเดอร์หลัง 09:00 ──────────────────────
+  const [timeUnlocked, setTimeUnlocked] = useState(false)
+  const isOrderLate = !timeUnlocked &&
+    (new Date().getHours() * 60 + new Date().getMinutes()) >= ORDER_CUTOFF_MIN
 
   // ── form state ────────────────────────────────────
   const [showForm,   setShowForm]   = useState(false)
@@ -171,6 +177,11 @@ export default function Commission() {
   // ── save commission ───────────────────────────────
   const handleSave = async () => {
     if (!form.adminId || !form.pageId || !form.date) { setErr('กรุณากรอก วันที่ / แอดมิน / เพจ'); return }
+    // บล็อคลงออเดอร์หลัง 09:00 สำหรับวันปัจจุบัน (เฉพาะ admin ไม่ใช่ head/super)
+    if (isAdmin && isOrderLate && form.date === today && !editItem) {
+      setErr('❌ หมดเวลาลงออเดอร์แล้ว — ระบบปิดรับหลัง 09:00 น. ของวันนี้')
+      return
+    }
     setSaving(true); setErr('')
     try {
       if (form.isNightSplit && form.shift === 'night') {
@@ -493,8 +504,12 @@ export default function Commission() {
                 style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'9px 16px', cursor:'pointer', fontSize:13, fontWeight:700, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>
                 <Upload size={14}/> Import Backend
               </button>
-              <button onClick={() => { setShowForm(true); setEditItem(null); setForm(makeBlank()) }}
-                className="btn btn-primary">
+              <button
+                onClick={() => { if (isAdmin && isOrderLate) return; setShowForm(true); setEditItem(null); setForm(makeBlank()) }}
+                disabled={isAdmin && isOrderLate}
+                title={isAdmin && isOrderLate ? 'หมดเวลาลงออเดอร์หลัง 09:00 น.' : ''}
+                className="btn btn-primary"
+                style={{ opacity: isAdmin && isOrderLate ? 0.45 : 1, cursor: isAdmin && isOrderLate ? 'not-allowed' : 'pointer' }}>
                 <Plus size={15}/> ✏️ ลงข้อมูล
               </button>
             </>
@@ -545,7 +560,36 @@ export default function Commission() {
         </div>
       </div>
 
-      {/* ── Filters ── */}
+      {/* ── Late Order Warning ── */}
+      {isAdmin && isOrderLate && (
+        <div style={{ background:'linear-gradient(135deg,#fff1f2,#ffe4e6)', border:'2px solid #fca5a5', borderRadius:14, padding:'14px 18px', display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#be123c,#e11d48)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🚫</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:15, fontWeight:900, color:'#be123c', marginBottom:4 }}>หมดเวลาลงออเดอร์แล้ว</div>
+            <div style={{ fontSize:13, color:'#6b7280' }}>ระบบปิดรับการลงออเดอร์ของวันนี้หลัง 09:00 น. — สามารถลงข้อมูลย้อนหลังได้โดยเลือกวันที่อื่น</div>
+          </div>
+          {canManage && (
+            <button onClick={()=>setTimeUnlocked(true)}
+              style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', border:'none', borderRadius:10, padding:'9px 18px', cursor:'pointer', fontSize:13, fontWeight:800, color:'#fff', fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0, boxShadow:'0 3px 10px rgba(217,119,6,.3)' }}>
+              🔓 ปลดล็อค
+            </button>
+          )}
+        </div>
+      )}
+      {/* ── Unlocked notice ── */}
+      {canManage && timeUnlocked && (
+        <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'1.5px solid #fde68a', borderRadius:12, padding:'10px 16px', display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:18 }}>🔓</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#b45309', flex:1 }}>ปลดล็อคแล้ว — แอดมินสามารถลงออเดอร์ได้จนกว่าจะรีเฟรชหน้า</span>
+          <button onClick={()=>setTimeUnlocked(false)}
+            style={{ background:'#f1f5f9', border:'1px solid #e0e7ff', borderRadius:8, padding:'5px 12px', cursor:'pointer', fontSize:12, color:'#6b7280', fontFamily:'inherit' }}>
+            🔒 ล็อคอีกครั้ง
+          </button>
+        </div>
+      )}
+
+            {/* ── Filters ── */}
+  
       <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:14, padding:'14px 18px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12, alignItems:'end' }}>
           <div style={{ gridColumn:'1/-1' }}>
