@@ -15,8 +15,6 @@ const nowTotal   = nowHour * 60 + nowMin  // นาทีตั้งแต่ 0
 // กะกลางวัน 05:00–22:30 (300–1350), กะดึก 22:30–05:00
 const defaultShift = (nowTotal >= 300 && nowTotal < 1350) ? 'day' : 'night'
 
-// บล็อคเช็คอินหลัง 09:00 (540 นาที)
-const CHECKIN_CUTOFF = 9 * 60  // 09:00
 
 // ── กะ ──────────────────────────────────────────────
 const SHIFTS = {
@@ -67,8 +65,7 @@ export default function CheckIn() {
     : pages.filter(p => p.status === 'active')
 
   const [tab,          setTab]          = useState('checkin')
-  // ── บล็อคเช็คอินหลัง 09:00 ──
-  const isLateNow = (new Date().getHours() * 60 + new Date().getMinutes()) >= CHECKIN_CUTOFF
+  const isLateNow = false
   const [selectedShift,setSelectedShift]= useState(defaultShift)
   const [selectedPages,setSelectedPages]= useState([])   // multi-page
   const [saving,       setSaving]       = useState(false)
