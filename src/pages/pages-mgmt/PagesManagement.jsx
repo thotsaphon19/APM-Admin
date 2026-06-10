@@ -524,17 +524,23 @@ export default function PagesManagement() {
                     .map(a => users.find(u => u.id === a.adminId)?.name || '?')
                   return (
                     <div key={p.id} style={{
-                      background:'linear-gradient(135deg,#fafbff,#f5f3ff)',
-                      border:`1.5px solid ${p.status==='active'?'#ddd6fe':'#e5e7eb'}`, borderRadius:14, padding:16,
-                      opacity: p.status==='active' ? 1 : 0.65,
+                      background: p.status==='active'
+                        ? 'linear-gradient(135deg,#fafbff,#f5f3ff)'
+                        : 'linear-gradient(135deg,#f3f4f6,#e5e7eb)',
+                      border:`1.5px solid ${p.status==='active'?'#ddd6fe':'#d1d5db'}`,
+                      borderRadius:14, padding:16, position:'relative',
+                      transition:'opacity .2s',
                     }}>
+                      {/* ป้าย ปิดอยู่ */}
+                      {p.status!=='active' && (
+                        <div style={{ position:'absolute', top:10, right:44, background:'#6b7280', color:'#fff', borderRadius:99, padding:'2px 8px', fontSize:10, fontWeight:800 }}>⏸ ปิดอยู่</div>
+                      )}
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                        <div style={{ fontSize:22 }}>🧪</div>
+                        <div style={{ fontSize:22, opacity:p.status==='active'?1:0.5 }}>🧪</div>
                         <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap', flex:1 }}>
-                          <div style={{ fontSize:14, fontWeight:800, color:'#1e1b4b' }}>{p.name}</div>
+                          <div style={{ fontSize:14, fontWeight:800, color:p.status==='active'?'#1e1b4b':'#6b7280' }}>{p.name}</div>
                           {p.channel && <ChannelBadge channel={p.channel} channelNote={p.channelNote} size='sm'/>}
                         </div>
-                        {/* สถานะ + ปุ่มเปิด/ปิด */}
                         {canManage && (
                           <button onClick={async()=>{ await editPage(p.id,{...p,status:p.status==='active'?'inactive':'active'}) }}
                             title={p.status==='active'?'ปิดเพจ':'เปิดเพจ'}
@@ -559,26 +565,41 @@ export default function PagesManagement() {
                         </span>
                       )}
 
-                      {/* ปุ่มแจ้งเตือน แชทค้าง */}
+                      {/* ปุ่ม แก้ไข + มอบหมาย */}
+                      {canManage && (
+                        <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                          <button onClick={()=>openEdit(p)}
+                            style={{ flex:1, background:'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:9, padding:'6px 0', cursor:'pointer', fontSize:12, fontWeight:700, color:'#059669', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                            <Edit2 size={12}/> แก้ไข
+                          </button>
+                          <button onClick={()=>setAssign(p)}
+                            style={{ flex:1, background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:9, padding:'6px 0', cursor:'pointer', fontSize:12, fontWeight:700, color:'#4338ca', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                            <Users size={12}/> มอบหมาย
+                          </button>
+                        </div>
+                      )}
+
+                                            {/* ปุ่มแจ้งเตือน แชทค้าง */}
                       {canManage && (
                         <button onClick={async()=>{
                           const cnt = (alertCounts[p.id]||0) + 1
                           setAlertCounts(prev=>({...prev,[p.id]:cnt}))
                           // แจ้งเตือนคนที่เฝ้าคืนนี้ (dutyAssignments) + คนที่รับผิดชอบ (assignedTo)
-                          const targets = new Set([
+                          const targets = [...new Set([
                             ...(p.assignedTo||[]),
                             ...dutyAssignments.filter(a=>(a.pageIds||[]).includes(p.id)).map(a=>a.adminId)
-                          ])
-                          if (targets.size === 0) {
-                            // ถ้าไม่มีใคร แจ้งทุก admin
-                            users.filter(u=>u.role==='admin'||u.role==='head_admin').forEach(u=>{
-                              notifyCustom({ type:'alert', title:`🔔 มีแชทค้าง! — ${p.name}`, message:`ตรวจสอบแชทค้างด่วน (ครั้งที่ ${cnt})`, link:'/commission', targetUid:u.id })
-                            })
-                          } else {
-                            targets.forEach(uid=>{
-                              notifyCustom({ type:'alert', title:`🔔 มีแชทค้าง! — ${p.name}`, message:`ตรวจสอบแชทค้างด่วน (ครั้งที่ ${cnt})`, link:'/commission', targetUid:uid })
-                            })
-                          }
+                          ])]
+                          const notifyIds = targets.length > 0
+                            ? targets
+                            : users.filter(u=>u.role==='admin'||u.role==='head_admin').map(u=>u.id)
+                          notifyCustom({
+                            type: 'alert',
+                            title: `🔔 มีแชทค้าง! — ${p.name}`,
+                            message: `ตรวจสอบแชทค้างด่วน (ครั้งที่ ${cnt}) แจ้งโดย ${profile?.name}`,
+                            link: '/commission',
+                            targetUserIds: notifyIds,
+                            targetRoles: [],
+                          })
                         }}
                         style={{ width:'100%', background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'1.5px solid #fde68a', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12, fontWeight:800, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
                           <Bell size={12}/>
