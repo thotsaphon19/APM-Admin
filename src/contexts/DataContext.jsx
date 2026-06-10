@@ -15,6 +15,7 @@ import {
   addCommission, updateCommission as dbUpdateCommission, deleteCommission as dbDeleteCommission,
   addLeave, updateLeave,
   subscribePayrollDaily, savePayrollDaily,
+  updateUserDoc,
 } from '../lib/db'
 
 const DataContext = createContext(null)
@@ -144,6 +145,9 @@ export function DataProvider({ children }) {
   const getPageName = (id) => pages.find(p => p.id === id)?.name || '—'
   const getPage     = (id) => pages.find(p => p.id === id) || null
 
+  // ── Update User ──────────────────────────────────
+  const updateUser = (id, data) => updateUserDoc(id, data)
+
   return (
     <DataContext.Provider value={{
       users, pages, commissions, auditOrders, leaves, commRates, loadingData,
@@ -159,6 +163,7 @@ export function DataProvider({ children }) {
       createPage, editPage, removePage,
       createCommission, editCommission, removeCommission,
       createLeave, approveLeave, rejectLeave, removeLeave,
+      updateUser,
       getCommStats, getUserName, getPageName, getPage,
     }}>
       {children}
