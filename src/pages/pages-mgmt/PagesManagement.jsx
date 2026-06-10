@@ -560,19 +560,25 @@ export default function PagesManagement() {
                       )}
 
                       {/* ปุ่มแจ้งเตือน แชทค้าง */}
-                      {(isSuperAdmin || profile?.role==='assistant') && (p.assignedTo||[]).length > 0 && (
+                      {canManage && (
                         <button onClick={async()=>{
                           const cnt = (alertCounts[p.id]||0) + 1
-                          setAlertCounts(prev=>({...prev,[p.id]:cnt}));
-                          (p.assignedTo||[]).forEach(uid=>{
-                            notifyCustom({
-                              type:'alert',
-                              title:`🔔 มีแชทค้าง! — ${p.name}`,
-                              message:`ตรวจสอบแชทค้างด่วน (แจ้งเตือนครั้งที่ ${cnt})`,
-                              link:'/commission',
-                              targetUid:uid,
+                          setAlertCounts(prev=>({...prev,[p.id]:cnt}))
+                          // แจ้งเตือนคนที่เฝ้าคืนนี้ (dutyAssignments) + คนที่รับผิดชอบ (assignedTo)
+                          const targets = new Set([
+                            ...(p.assignedTo||[]),
+                            ...dutyAssignments.filter(a=>(a.pageIds||[]).includes(p.id)).map(a=>a.adminId)
+                          ])
+                          if (targets.size === 0) {
+                            // ถ้าไม่มีใคร แจ้งทุก admin
+                            users.filter(u=>u.role==='admin'||u.role==='head_admin').forEach(u=>{
+                              notifyCustom({ type:'alert', title:`🔔 มีแชทค้าง! — ${p.name}`, message:`ตรวจสอบแชทค้างด่วน (ครั้งที่ ${cnt})`, link:'/commission', targetUid:u.id })
                             })
-                          })
+                          } else {
+                            targets.forEach(uid=>{
+                              notifyCustom({ type:'alert', title:`🔔 มีแชทค้าง! — ${p.name}`, message:`ตรวจสอบแชทค้างด่วน (ครั้งที่ ${cnt})`, link:'/commission', targetUid:uid })
+                            })
+                          }
                         }}
                         style={{ width:'100%', background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'1.5px solid #fde68a', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12, fontWeight:800, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
                           <Bell size={12}/>
@@ -679,9 +685,7 @@ export default function PagesManagement() {
                         )}
                         {/* ปุ่มเปิด/ปิดเพจ */}
                         {canManage && (
-                          <button onClick={async()=>{
-                              await editPage(p.id,{...p, status: p.status==='active'?'inactive':'active'})
-                            }}
+                          <button onClick={async()=>{ await editPage(p.id,{...p,status:p.status==='active'?'inactive':'active'}) }}
                             title={p.status==='active'?'ปิดเพจ':'เปิดเพจ'}
                             style={{ background:p.status==='active'?'#fff1f2':'#f0fdf4', border:`1.5px solid ${p.status==='active'?'#fecdd3':'#bbf7d0'}`, borderRadius:9, width:34, height:34, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:p.status==='active'?'#be123c':'#059669' }}>
                             <Power size={13}/>
