@@ -8,7 +8,7 @@ import { useNotify } from '../../hooks/useNotify'
 import {
 
   Plus, Edit2, Trash2, Check, X, Star, TestTube,
-  Moon, Sun, ChevronLeft, ChevronRight, Users, BookOpen, Calendar,
+  Moon, Sun, ChevronLeft, ChevronRight, Users, BookOpen, Calendar, Bell, Power,
 } from 'lucide-react'
 
 // ── ช่องทาง + SVG Icon ───────────────────────────────
@@ -92,6 +92,7 @@ export default function PagesManagement() {
   const [weekDrafts, setWeekDrafts] = useState({})     // { 'yyyy-MM-dd': { adminId:[pageId,...] } }
   const [savingWeek, setSavingWeek] = useState(false)
   const [dutyDraft,  setDutyDraft]  = useState({})       // { adminId: [pageId,...] }
+  const [alertCounts, setAlertCounts] = useState({})    // { pageId: count }
 
   const admins   = users.filter(u => ['admin','head_admin'].includes(u.role))
   const myPages  = isAdmin
@@ -626,25 +627,65 @@ export default function PagesManagement() {
                     </div>
                   )}
 
-                  {/* Actions — admin เห็นเฉพาะเพจของตัวเอง */}
-                  {(canEditPage(p) || canAssign()) && (
-                    <div style={{ display:'flex', gap:7, paddingTop:6, borderTop:'1px solid #f0f4ff' }}>
-                      {canAssign() && (
-                        <button onClick={() => setAssign(p)}
-                          style={{ flex:1, background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#4338ca', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-                          <Users size={13}/> มอบหมาย
-                        </button>
-                      )}
-                      {canEditPage(p) && (
-                        <button onClick={() => openEdit(p)}
-                          style={{ flex: canAssign() ? 'none' : 1, background:'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:9, width: canAssign() ? 34 : 'auto', height:34, padding: canAssign() ? 0 : '0 14px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#059669', gap:5, fontSize:12.5, fontWeight:700, fontFamily:'inherit' }}>
-                          <Edit2 size={13}/>{!canAssign() && ' แก้ไข'}
-                        </button>
-                      )}
-                      {canDeletePage(p) && (
-                        <button onClick={() => setConfirm({id:p.id,name:p.name})}
-                          style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:9, width:34, height:34, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#be123c' }}>
-                          <Trash2 size={13}/>
+                  {/* Actions */}
+                  {(canEditPage(p) || canAssign() || canManage) && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:7, paddingTop:6, borderTop:'1px solid #f0f4ff' }}>
+                      <div style={{ display:'flex', gap:7 }}>
+                        {canAssign() && (
+                          <button onClick={() => setAssign(p)}
+                            style={{ flex:1, background:'#eef2ff', border:'1.5px solid #c7d2fe', borderRadius:9, padding:'7px 0', cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#4338ca', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                            <Users size={13}/> มอบหมาย
+                          </button>
+                        )}
+                        {canEditPage(p) && (
+                          <button onClick={() => openEdit(p)}
+                            style={{ flex: canAssign() ? 'none' : 1, background:'#f0fdf4', border:'1.5px solid #bbf7d0', borderRadius:9, width: canAssign() ? 34 : 'auto', height:34, padding: canAssign() ? 0 : '0 14px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#059669', gap:5, fontSize:12.5, fontWeight:700, fontFamily:'inherit' }}>
+                            <Edit2 size={13}/>{!canAssign() && ' แก้ไข'}
+                          </button>
+                        )}
+                        {/* ปุ่มเปิด/ปิดเพจ */}
+                        {canManage && (
+                          <button onClick={async()=>{
+                              await editPage(p.id,{...p, status: p.status==='active'?'inactive':'active'})
+                            }}
+                            title={p.status==='active'?'ปิดเพจ':'เปิดเพจ'}
+                            style={{ background:p.status==='active'?'#fff1f2':'#f0fdf4', border:`1.5px solid ${p.status==='active'?'#fecdd3':'#bbf7d0'}`, borderRadius:9, width:34, height:34, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:p.status==='active'?'#be123c':'#059669' }}>
+                            <Power size={13}/>
+                          </button>
+                        )}
+                        {canDeletePage(p) && (
+                          <button onClick={() => setConfirm({id:p.id,name:p.name})}
+                            style={{ background:'#fff1f2', border:'1.5px solid #fecdd3', borderRadius:9, width:34, height:34, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#be123c' }}>
+                            <Trash2 size={13}/>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* ปุ่มแจ้งเตือน "มีแชทค้าง" — superadmin/assistant เท่านั้น */}
+                      {(isSuperAdmin || profile?.role==='assistant') && (p.assignedTo||[]).length > 0 && (
+                        <button onClick={async () => {
+                          const cnt = (alertCounts[p.id]||0) + 1
+                          setAlertCounts(prev => ({...prev, [p.id]: cnt}))
+                          const targets = (p.assignedTo||[])
+                          // ส่งแจ้งเตือนแต่ละคนที่เฝ้าเพจ
+                          targets.forEach(uid => {
+                            notifyCustom({
+                              type: 'alert',
+                              title: `🔔 มีแชทค้าง! — ${p.name}`,
+                              message: `ตรวจสอบแชทค้างด่วน (แจ้งเตือนครั้งที่ ${cnt})`,
+                              link: '/commission',
+                              targetUid: uid,
+                            })
+                          })
+                        }}
+                        style={{ width:'100%', background:'linear-gradient(135deg,#fffbeb,#fef3c7)', border:'1.5px solid #fde68a', borderRadius:9, padding:'8px 0', cursor:'pointer', fontSize:12.5, fontWeight:800, color:'#b45309', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                          <Bell size={13}/>
+                          แจ้งเตือน "มีแชทค้าง"
+                          {alertCounts[p.id] > 0 && (
+                            <span style={{ background:'#ef4444', color:'#fff', borderRadius:99, padding:'0px 6px', fontSize:10.5, fontWeight:900 }}>
+                              ×{alertCounts[p.id]}
+                            </span>
+                          )}
                         </button>
                       )}
                     </div>
