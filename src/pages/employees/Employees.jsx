@@ -199,7 +199,7 @@ export default function Employees() {
                   {/* Top */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <Avatar name={emp.avatar || emp.name} size="lg"/>
+                      <Avatar name={emp.avatar || emp.name} photoURL={emp.photoURL||''} size="lg"/>
                       <div>
                         <div className="font-bold">{emp.name}</div>
                         <RoleBadge role={emp.role}/>
