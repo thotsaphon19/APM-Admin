@@ -85,8 +85,15 @@ export function Empty({ icon: Icon, title, sub }) {
   )
 }
 
-export function Avatar({ name='?', size='md', className='', style={} }) {
+export function Avatar({ name='?', size='md', className='', style={}, photoURL='' }) {
   const sz={xs:'avatar-xs',sm:'avatar-sm',md:'avatar-md',lg:'avatar-lg',xl:'avatar-xl'}[size]||'avatar-md'
+  if (photoURL) {
+    return (
+      <div className={`avatar ${sz} ${className}`} style={{ ...style, padding:0, overflow:'hidden' }}>
+        <img src={photoURL} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }}/>
+      </div>
+    )
+  }
   return <div className={`avatar ${sz} ${className}`} style={style}>{(name||'?').slice(0,2)}</div>
 }
 
