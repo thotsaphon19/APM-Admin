@@ -166,16 +166,20 @@ export function subscribeNotifications(uid, role, callback) {
   return onSnapshot(q, snap => {
     const all = snap.docs.map(toData)
     const filtered = all.filter(n => {
-      // ถ้ามี targetUserIds → เช็ค uid ก่อน
-      if (n.targetUserIds?.length > 0) {
-        if (n.targetUserIds.includes(uid)) return true
-        // ถ้า uid ไม่อยู่ใน targetUserIds แต่ role ตรง ก็ยังโชว์
-      }
-      // เช็ค targetRoles
-      if (!n.targetRoles || n.targetRoles.length === 0) return true
+      const hasUserIds  = n.targetUserIds?.length > 0
+      const hasRoles    = n.targetRoles?.length > 0
+
+      // ถ้ามี targetUserIds และ uid อยู่ใน list → แสดง
+      if (hasUserIds && n.targetUserIds.includes(uid)) return true
+
+      // ถ้ามี targetUserIds แต่ uid ไม่อยู่ → ไม่แสดง (เฉพาะคนนั้น)
+      if (hasUserIds && !n.targetUserIds.includes(uid)) return false
+
+      // ไม่มี targetUserIds → ใช้ targetRoles
+      if (!hasRoles) return true  // broadcast ทุกคน
       return n.targetRoles.includes('all') || n.targetRoles.includes(role)
     })
-    callback(filtered.slice(0, 100)) // limit 100
+    callback(filtered.slice(0, 100))
   })
 }
 
