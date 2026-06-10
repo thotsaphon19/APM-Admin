@@ -196,11 +196,21 @@ export default function Layout() {
           </div>
           <div className="topbar-right">
             <NotificationBell/>
-            <div style={{
-              background:rs.bg, color:rs.color, border:`1.5px solid ${rs.border}`,
-              borderRadius:99, padding:'5px 14px', fontSize:13, fontWeight:700,
-            }}>
-              {rs.label}
+            <div onClick={()=>setShowProfileModal(true)}
+              style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                background:rs.bg, border:`1.5px solid ${rs.border}`,
+                borderRadius:99, padding:'4px 14px 4px 4px' }}>
+              {/* avatar */}
+              <div style={{ width:28, height:28, borderRadius:'50%', overflow:'hidden', flexShrink:0,
+                background:profile?.photoURL?'transparent':'linear-gradient(135deg,#6366f1,#7c3aed)',
+                color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:11, fontWeight:900, border:'1.5px solid rgba(255,255,255,.5)' }}>
+                {profile?.photoURL
+                  ? <img src={profile.photoURL} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                  : (profile?.avatar||profile?.name||'?').slice(0,2)
+                }
+              </div>
+              <span style={{ color:rs.color, fontSize:13, fontWeight:700 }}>{rs.label}</span>
             </div>
           </div>
         </header>
