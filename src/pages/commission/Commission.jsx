@@ -70,6 +70,7 @@ export default function Commission() {
     proOrders:'',    // ออเดอร์โปร
     proItems:[],     // รายการสินค้าโปร [{name,qty,price}]
     saleAmount:'',   // ยอดขาย
+    productLink:'',  // ลิงค์แนบสินค้า
     note:'',
   })
   const [form, setForm] = useState(makeBlank)
@@ -966,6 +967,33 @@ export default function Commission() {
                 </div>
               </div>
 
+              {/* ── ลิงค์แนบสินค้า ── */}
+              <div style={{ background:'linear-gradient(135deg,#eef2ff,#e0e7ff)', border:'1.5px solid #c7d2fe', borderRadius:12, padding:'14px 16px', marginBottom:16 }}>
+                <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#4338ca', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>
+                  🔗 ลิงค์แนบสินค้า
+                </label>
+                <div style={{ position:'relative' }}>
+                  <input
+                    style={{ ...S, paddingLeft:36, borderColor: form.productLink ? '#6366f1' : '#c7d2fe', background: form.productLink ? '#fff' : '#f8faff' }}
+                    placeholder="https://... วางลิงค์สินค้าที่นี่"
+                    value={form.productLink||''}
+                    onChange={setF('productLink')}
+                  />
+                  <span style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', fontSize:16 }}>🔗</span>
+                  {form.productLink && (
+                    <a href={form.productLink} target="_blank" rel="noopener noreferrer"
+                      style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'#6366f1', color:'#fff', border:'none', borderRadius:7, padding:'3px 10px', fontSize:12, fontWeight:700, cursor:'pointer', textDecoration:'none', display:'flex', alignItems:'center', gap:4 }}>
+                      เปิด ↗
+                    </a>
+                  )}
+                </div>
+                {form.productLink && (
+                  <div style={{ marginTop:6, fontSize:11.5, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    📎 {form.productLink}
+                  </div>
+                )}
+              </div>
+
               <div style={{ marginBottom:18 }}>
                 <label style={{ display:'block', fontSize:11.5, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>📝 หมายเหตุ</label>
                 <textarea style={{...S,minHeight:60,resize:'vertical'}} placeholder="หมายเหตุ..." value={form.note} onChange={setF('note')}/>
@@ -1082,10 +1110,14 @@ export default function Commission() {
                                 {l:'❌ ปัญหา',v:`ยกเลิก ${c.cancelOrders||0} · ไม่ชัด ${c.unclearOrders||0}`,color:'#be123c',bg:'#fff1f2',border:'#fecdd3'},
                                 {l:'🫟 กดยอดไม่ได้',v:`${c.pendingOrders||0} บ้าน (รับแล้ว ยังไม่ส่ง)`,color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe'},
                                 {l:'💎 รวม',v:`฿${(c.total||0).toLocaleString()} · ${c.note||'ไม่มีหมายเหตุ'}`,color:'#4338ca',bg:'#eef2ff',border:'#c7d2fe'},
+                                ...(c.productLink ? [{l:'🔗 ลิงค์สินค้า',v:c.productLink,color:'#0369a1',bg:'#e0f2fe',border:'#bae6fd',isLink:true}] : []),
                               ].map((d,i)=>(
                                 <div key={i} style={{ background:d.bg, border:`1.5px solid ${d.border}`, borderRadius:10, padding:12 }}>
                                   <div style={{ fontSize:12, fontWeight:800, color:d.color, marginBottom:6 }}>{d.l}</div>
-                                  <div style={{ fontSize:13, color:'#4b5563' }}>{d.v}</div>
+                                  {d.isLink
+                                    ? <a href={d.v} target="_blank" rel="noopener noreferrer" style={{ fontSize:13, color:'#0369a1', fontWeight:700, wordBreak:'break-all', textDecoration:'underline' }}>{d.v}</a>
+                                    : <div style={{ fontSize:13, color:'#4b5563' }}>{d.v}</div>
+                                  }
                                 </div>
                               ))}
                             </div>
