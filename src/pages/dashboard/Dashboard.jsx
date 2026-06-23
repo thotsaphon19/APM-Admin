@@ -91,6 +91,11 @@ export default function Dashboard() {
   const myPages       = pages.filter(p=>p.assignedTo?.includes(profile?.id))
   const pendingLeaves = leaves.filter(l=>!l.deleted&&l.status==='pending')
 
+  // เพจที่จะแสดงใน "สถานะเพจตอบวันนี้" — admin เห็นเฉพาะเพจของตัวเอง
+  const visiblePages = profile?.role === 'admin'
+    ? pages.filter(p => p.status === 'active' && p.assignedTo?.includes(profile?.id))
+    : pages.filter(p => p.status === 'active')
+
   const pageChart = useMemo(()=>pages.map(p=>{
     const cs=monthComm.filter(c=>c.pageId===p.id)
     return { name:p.name.length>8?p.name.slice(0,8)+'…':p.name,
@@ -261,12 +266,12 @@ export default function Dashboard() {
         <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:18, overflow:'hidden', boxShadow:'0 2px 12px rgba(99,102,241,.06)' }}>
           <div style={{ background:'linear-gradient(135deg,#eef2ff,#f0fdf4)', padding:'14px 18px', borderBottom:'1.5px solid #e0e7ff', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div style={{ fontSize:14, fontWeight:900, color:'#1e1b4b' }}>📄 สถานะเพจตอนนี้</div>
-            <span style={{ fontSize:12, color:'#6b7280' }}>{pages.filter(p=>p.status==='active').length} เพจทั้งหมด</span>
+            <span style={{ fontSize:12, color:'#6b7280' }}>{visiblePages.length} {profile?.role==='admin'?'เพจของฉัน':'เพจทั้งหมด'}</span>
           </div>
           <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:8, maxHeight:280, overflowY:'auto' }}>
-            {pages.filter(p=>p.status==='active').length === 0 ? (
-              <div style={{ textAlign:'center', padding:'20px 0', color:'#9ca3af', fontSize:13 }}>ยังไม่มีเพจ</div>
-            ) : pages.filter(p=>p.status==='active').map(p=>{
+            {visiblePages.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'20px 0', color:'#9ca3af', fontSize:13 }}>{profile?.role==='admin'?'คุณยังไม่ได้รับมอบหมายเพจ':'ยังไม่มีเพจ'}</div>
+            ) : visiblePages.map(p=>{
               const active = liveToday.filter(c=>c.pageId===p.id)
               return (
                 <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background: active.length>0?'#f0fdf4':'#f9fafb', borderRadius:10, border:`1px solid ${active.length>0?'#bbf7d0':'#f0f4ff'}` }}>
