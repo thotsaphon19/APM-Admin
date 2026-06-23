@@ -56,6 +56,7 @@ export function AuthProvider({ children }) {
         }
       } catch (err) {
         console.error('Auth state error:', err)
+        setUser(null)
         setProfile(null)
       } finally {
         setLoading(false)
