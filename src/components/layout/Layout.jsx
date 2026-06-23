@@ -14,7 +14,7 @@ const NAV_GROUPS = [
       { path:'/verify',     emoji:'🔍', label:'ตรวจสอบยอด',        roles:['superadmin','head_admin','assistant'] },
       { path:'/audit',      emoji:'⚖️', label:'หลังบ้านตรวจออเดอร์',roles:['superadmin','head_admin','auditor'] },
       { path:'/checkin',    emoji:'🏁', label:'เช็คอิน / กะ',          roles:['superadmin','head_admin','admin','assistant'] },
-      { path:'/parcels',        emoji:'📦', label:'พัสดุ / ขนส่ง',          roles:['superadmin','head_admin','admin','assistant'] },
+      { path:'/parcels',        emoji:'📦', label:'พัสดุ / ขนส่ง',          roles:['superadmin','head_admin','assistant'] },
       { path:'/parcel-compare',  emoji:'🔍', label:'เปรียบเทียบออเดอร์',      roles:['superadmin','head_admin','assistant'] },
     ]
   },
@@ -24,7 +24,7 @@ const NAV_GROUPS = [
       { path:'/team',     emoji:'🛡️', label:'ศูนย์บัญชาการทีม', roles:['superadmin','head_admin'] },
       { path:'/payroll',  emoji:'💵', label:'เงินเดือน',           roles:['superadmin','head_admin','assistant'] },
       { path:'/company',  emoji:'🏢', label:'ภาพรวมบริษัท',      roles:['superadmin'] },
-      { path:'/pages',    emoji:'📄', label:'จัดการเพจ',         roles:['superadmin','head_admin','admin'] },
+      { path:'/pages',    emoji:'📄', label:'จัดการเพจ',         roles:['superadmin','head_admin'] },
       { path:'/leave',    emoji:'🌴', label:'วันลา',              roles:['superadmin','head_admin','admin','assistant'] },
       { path:'/mailbox',  emoji:'📬', label:'รับเมลงาน',         roles:['superadmin','head_admin','admin','assistant'] },
     ]
