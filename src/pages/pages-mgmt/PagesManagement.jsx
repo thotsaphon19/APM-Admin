@@ -8,7 +8,7 @@ import { useNotify } from '../../hooks/useNotify'
 import {
 
   Plus, Edit2, Trash2, Check, X, Star, TestTube,
-  Moon, Sun, ChevronLeft, ChevronRight, Users, BookOpen, Calendar, Bell, Power,
+  Moon, Sun, ChevronLeft, ChevronRight, Users, BookOpen, Calendar, Bell, Power, Search,
 } from 'lucide-react'
 
 // ── ช่องทาง + SVG Icon ───────────────────────────────
@@ -79,6 +79,7 @@ export default function PagesManagement() {
   const canAssign     = () => canManage
 
   const [tab,        setTab]        = useState('duty')   // 'duty' | 'pages'
+  const [pageSearch, setPageSearch] = useState('')        // ← ค้นหาเพจ
   const [dutyDate,   setDutyDate]   = useState(todayStr)
   const [modal,      setModal]      = useState(null)
   const [current,    setCurrent]    = useState(null)
@@ -100,6 +101,19 @@ export default function PagesManagement() {
     : pages.filter(p => p.status === 'active')
   const testPages  = pages.filter(p => p.type === 'test'  && p.status === 'active')
   const mainPages  = pages.filter(p => p.type === 'main'  && p.status === 'active')
+
+  // ── ค้นหาเพจ (tab จัดการเพจ) ──────────────────────
+  const filteredPages = useMemo(() => {
+    const q = pageSearch.trim().toLowerCase()
+    if (!q) return pages
+    return pages.filter(p =>
+      p.name?.toLowerCase().includes(q) ||
+      p.type?.toLowerCase().includes(q) ||
+      (CHANNELS[p.channel]?.label||'').toLowerCase().includes(q) ||
+      p.channelNote?.toLowerCase().includes(q) ||
+      (p.assignedTo||[]).some(uid => users.find(u=>u.id===uid)?.name?.toLowerCase().includes(q))
+    )
+  }, [pages, pageSearch, users])
 
   // ── night duty for selected date ──────────────────────
   const dutyRecord = useMemo(() =>
@@ -637,13 +651,37 @@ export default function PagesManagement() {
             ))}
           </div>
 
+          {/* Search bar */}
+          <div style={{ position:'relative' }}>
+            <Search size={16} style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', color:'#9ca3af', pointerEvents:'none' }}/>
+            <input
+              placeholder="ค้นหาเพจ ชื่อ / ช่องทาง / แอดมิน..."
+              value={pageSearch}
+              onChange={e => setPageSearch(e.target.value)}
+              style={{ ...S, paddingLeft:38, borderRadius:12, border:'1.5px solid #c7d2fe', background:'#fafbff', fontSize:13.5 }}
+            />
+            {pageSearch && (
+              <button
+                onClick={() => setPageSearch('')}
+                style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'#e0e7ff', border:'none', borderRadius:99, width:20, height:20, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#4338ca' }}>
+                <X size={11}/>
+              </button>
+            )}
+          </div>
+
+          {pageSearch && (
+            <div style={{ fontSize:13, color:'#6366f1', fontWeight:700 }}>
+              🔍 พบ {filteredPages.length} เพจ จากคำว่า "{pageSearch}"
+            </div>
+          )}
+
           {/* Page grid */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
-            {pages.length===0 ? (
+            {filteredPages.length===0 ? (
               <div style={{ background:'#fff', border:'1.5px solid #e0e7ff', borderRadius:16, gridColumn:'1/-1' }}>
-                <Empty title="ยังไม่มีเพจ" sub={canManage?'กด "เพิ่มเพจ" เพื่อเริ่มต้น':undefined}/>
+                <Empty title={pageSearch ? `ไม่พบเพจที่ค้นหา "${pageSearch}"` : 'ยังไม่มีเพจ'} sub={!pageSearch && canManage?'กด "เพิ่มเพจ" เพื่อเริ่มต้น':undefined}/>
               </div>
-            ) : pages.map(p => {
+            ) : filteredPages.map(p => {
               const isMain = p.type === 'main'
               const isMyPage = p.assignedTo?.includes(myUid)
               const assignedNames = (p.assignedTo||[]).map(id=>users.find(u=>u.id===id)?.name||'?')
