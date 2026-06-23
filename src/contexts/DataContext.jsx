@@ -55,8 +55,6 @@ export function DataProvider({ children }) {
       subscribePayrollLocks(setPayrollLocks),
       subscribeBackendOrders(setBackendOrders),
       subscribeCancelledOrders(setCancelledOrders),
-      subscribeBackendOrders(setBackendOrders),
-      subscribeCancelledOrders(setCancelledOrders),
       subscribePayrollDaily(setPayrollDaily),
     ]
     setLoadingData(false)
@@ -99,8 +97,11 @@ export function DataProvider({ children }) {
   const importBackendOrders = (list) => addBackendOrdersBatch(list)
 
   // ── Cancelled Orders ─────────────────────────────
-  const addCancel   = (data) => addCancelledOrder(data)
-  const removeCancel= (id)   => deleteCancelledOrder(id)
+  const addCancel              = (data) => addCancelledOrder(data)
+  const removeCancel           = (id)   => deleteCancelledOrder(id)
+  // aliases used by CommissionAdvanced
+  const createCancelledOrder   = (data) => addCancelledOrder(data)
+  const removeCancelledOrder   = (id)   => deleteCancelledOrder(id)
 
   // ── Check-in / Shift ─────────────────────────────
   const doCheckin  = (data) => addCheckin(data)
@@ -158,6 +159,8 @@ export function DataProvider({ children }) {
       payrollLocks, confirmPayroll, isPayrollLocked,
       backendOrders, importBackendOrders,
       cancelledOrders, addCancel, removeCancel,
+      createCancelledOrder, removeCancelledOrder,
+      payrollDaily, savePayroll,
       nightDuty, saveNightDuty, getNightDuty,
       saveCommissionRates,
       createPage, editPage, removePage,
