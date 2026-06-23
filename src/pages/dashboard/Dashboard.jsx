@@ -354,8 +354,8 @@ export default function Dashboard() {
           }
         </div>
 
-        {/* Team or pending */}
-        <div className="card" style={{ borderRadius:16 }}>
+        {/* Team or pending - hidden for admin role */}
+        {profile?.role !== 'admin' && <div className="card" style={{ borderRadius:16 }}>
           <div style={{ fontWeight:800, fontSize:15, color:'#1e1b4b', marginBottom:14, display:'flex', alignItems:'center', gap:8 }}>
             {isHead?'👥 สถานะทีม':'⏳ รออนุมัติวันลา'}
           </div>
@@ -391,7 +391,7 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* ══ ไม่มีเพจตอบ วันนี้ + รอลา ══════════════════ */}
@@ -439,7 +439,7 @@ export default function Dashboard() {
             )}
 
             {/* ── รอลา ── */}
-            {pendingLeaves.length > 0 && (canSeeAll || isSuperAdmin) && (
+            {pendingLeaves.length > 0 && (canSeeAll || isSuperAdmin) && profile?.role !== 'admin' && (
               <div style={{ background:'#fff', border:'1.5px solid #fde68a', borderRadius:18, overflow:'hidden', boxShadow:'0 2px 12px rgba(180,83,9,.07)' }}>
                 <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', padding:'14px 18px', borderBottom:'1.5px solid #fde68a', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div style={{ fontSize:14, fontWeight:900, color:'#b45309', display:'flex', alignItems:'center', gap:8 }}>
